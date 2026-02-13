@@ -10,7 +10,24 @@ const { adminRoutes } = require("./routes/adminRoutes");
 
 const app = express();
 
-app.use(cors({ origin: process.env.FRONTEND_URL || "http://localhost:3000" }));
+// Allow multiple origins: set FRONTEND_URL to "http://localhost:3000,https://autocontentai.co"
+// Response must send exactly ONE origin (browser rejects comma-separated).
+const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
+    credentials: true,
+  })
+);
 
 // PRD: Rate limiting – apply to auth and sensitive routes
 const authLimiter = rateLimit({
