@@ -1,0 +1,1153 @@
+<?php
+namespace AAB\Admin;
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class Settings {
+
+    public static function init() {
+        add_action('admin_init', [self::class, 'register']);
+        add_action('admin_post_aab_clear_single_key', [self::class, 'handle_clear_single_key']);
+    }
+
+    public static function register() {
+        // Provider selection
+        register_setting('aab_settings', 'aab_ai_provider', [
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'openai',
+        ]);
+
+        // API Keys - SEPARATE options for each provider
+       register_setting('aab_settings', 'aab_openai_key', [
+            'sanitize_callback' => [self::class, 'preserve_openai_key'],
+            'default' => '',
+        ]);
+
+        register_setting('aab_settings', 'aab_claude_key', [
+            'sanitize_callback' => [self::class, 'preserve_claude_key'],
+            'default' => '',
+        ]);
+
+        register_setting('aab_settings', 'aab_gemini_key', [
+            'sanitize_callback' => [self::class, 'preserve_gemini_key'],
+            'default' => '',
+        ]);
+
+        // Model selections - one for each provider
+        register_setting('aab_settings', 'aab_openai_model', [
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'gpt-4o',
+        ]);
+
+        register_setting('aab_settings', 'aab_claude_model', [
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'claude-sonnet-4-20250514',
+        ]);
+
+        register_setting('aab_settings', 'aab_gemini_model', [
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'gemini-2.5-flash',
+        ]);
+
+        // Custom model fields
+        register_setting('aab_settings', 'aab_openai_custom_model', [
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => '',
+        ]);
+
+        register_setting('aab_settings', 'aab_claude_custom_model', [
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => '',
+        ]);
+
+        register_setting('aab_settings', 'aab_gemini_custom_model', [
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => '',
+        ]);
+
+        // Backward compatibility
+        register_setting('aab_settings', 'aab_api_key', [
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => '',
+        ]);
+
+        register_setting('aab_settings', 'aab_model', [
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'gpt-4o',
+        ]);
+
+        add_settings_section(
+            'aab_main',
+            '',
+            '__return_false',
+            'aab-settings'
+        );
+
+        add_settings_field(
+            'aab_provider',
+            'AI Provider',
+            [self::class, 'provider_field'],
+            'aab-settings',
+            'aab_main'
+        );
+
+        add_settings_field(
+            'aab_api_keys_and_model',
+            'Configuration',
+            [self::class, 'api_keys_and_model_field'],
+            'aab-settings',
+            'aab_main'
+        );
+    }
+
+    public static function provider_field() {
+        $current = get_option('aab_ai_provider', 'openai');
+        ?>
+        <select name="aab_ai_provider" id="aab_ai_provider" class="aab-modern-select" onchange="aabToggleProviderFields()">
+            <option value="openai" <?php selected($current, 'openai'); ?>>OpenAI</option>
+            <option value="claude" <?php selected($current, 'claude'); ?>>Claude (Anthropic)</option>
+            <option value="gemini" <?php selected($current, 'gemini'); ?>>Gemini (Google)</option>
+        </select>
+        <p class="description">Select your preferred AI provider</p>
+        <?php
+    }
+
+    public static function preserve_openai_key($value) {
+        $value = trim($value ?? '');
+        return $value === '' 
+            ? get_option('aab_openai_key', '') 
+            : sanitize_text_field($value);
+    }
+
+    public static function preserve_claude_key($value) {
+        $value = trim($value ?? '');
+        return $value === '' 
+            ? get_option('aab_claude_key', '') 
+            : sanitize_text_field($value);
+    }
+
+    public static function preserve_gemini_key($value) {
+        $value = trim($value ?? '');
+        return $value === '' 
+            ? get_option('aab_gemini_key', '') 
+            : sanitize_text_field($value);
+    }
+
+    public static function api_keys_and_model_field() {
+        // Get saved values
+        $openai_key = get_option('aab_openai_key', '');
+        $claude_key = get_option('aab_claude_key', '');
+        $gemini_key = get_option('aab_gemini_key', '');
+        
+        $openai_model = get_option('aab_openai_model', 'gpt-4o');
+        $claude_model = get_option('aab_claude_model', 'claude-sonnet-4-20250514');
+        $gemini_model = get_option('aab_gemini_model', 'gemini-2.5-flash');
+
+        $openai_custom = get_option('aab_openai_custom_model', '');
+        $claude_custom = get_option('aab_claude_custom_model', '');
+        $gemini_custom = get_option('aab_gemini_custom_model', '');
+
+        // Define ALL models for each provider
+       $openai_models = [
+            // Latest GPT-5.2
+            'gpt-5.2' => 'GPT-5.2',
+            'gpt-5.2-pro' => 'GPT-5.2 Pro',
+            'gpt-5.2-chat-latest' => 'GPT-5.2 Chat Latest',
+            'gpt-5.2-codex' => 'GPT-5.2 Codex',
+
+            // GPT-5.1 Family
+            'gpt-5.1' => 'GPT-5.1',
+            'gpt-5.1-chat-latest' => 'GPT-5.1 Chat Latest',
+            'gpt-5.1-pro' => 'GPT-5.1 Pro',
+
+            // Legacy GPT-5 (if needed)
+            'gpt-5' => 'GPT-5 (Legacy)',
+
+            // Still include best GPT-4.1 and reasoning (optional)
+            'gpt-4.1' => 'GPT-4.1',
+            'gpt-4.1-mini' => 'GPT-4.1 Mini',
+            'gpt-4o' => 'GPT-4o',
+            'gpt-4o-mini' => 'GPT-4o Mini',
+
+            // Budget models
+            'gpt-3.5-turbo' => 'GPT-3.5 Turbo',
+        ];
+
+
+        $claude_models = [
+            'claude-opus-4-20250514' => 'Claude Opus 4 (May 2025)',
+            'claude-sonnet-4-20250514' => 'Claude Sonnet 4 (May 2025)',
+            'claude-opus-4-5-20251101' => 'Claude Opus 4.5 (Nov 2025)',
+            'claude-sonnet-4-5-20250929' => 'Claude Sonnet 4.5 (Sep 2025)',
+            'claude-haiku-4-5-20251001' => 'Claude Haiku 4.5 (Oct 2025)',
+            'claude-3-7-sonnet-20250219' => 'Claude 3.7 Sonnet (Feb 2025)',
+            'claude-3-5-sonnet-20241022' => 'Claude 3.5 Sonnet (Oct 2024)',
+            'claude-3-5-sonnet-20240620' => 'Claude 3.5 Sonnet (Jun 2024)',
+            'claude-3-5-haiku-20241022' => 'Claude 3.5 Haiku (Oct 2024)',
+            'claude-3-opus-20240229' => 'Claude 3 Opus (Feb 2024)',
+            'claude-3-sonnet-20240229' => 'Claude 3 Sonnet (Feb 2024)',
+            'claude-3-haiku-20240307' => 'Claude 3 Haiku (Mar 2024)',
+            'claude-2.1' => 'Claude 2.1 (Legacy)',
+            'claude-2.0' => 'Claude 2.0 (Legacy)',
+            'claude-instant-1.2' => 'Claude Instant 1.2 (Legacy)',
+        ];
+
+        $gemini_models = [
+            'gemini-2.5-flash' => 'Gemini 2.5 Flash',
+            'gemini-2.0-flash-exp' => 'Gemini 2.0 Flash (Experimental)',
+            'gemini-2.0-flash-thinking-exp-01-21' => 'Gemini 2.0 Flash Thinking (Jan 21)',
+            'gemini-2.0-flash-thinking-exp' => 'Gemini 2.0 Flash Thinking (Exp)',
+            'gemini-exp-1206' => 'Gemini Experimental 1206',
+            'gemini-exp-1121' => 'Gemini Experimental 1121',
+            'gemini-exp-1114' => 'Gemini Experimental 1114',
+            'learnlm-1.5-pro-experimental' => 'LearnLM 1.5 Pro (Experimental)',
+            'gemini-1.5-pro' => 'Gemini 1.5 Pro (Latest)',
+            'gemini-1.5-pro-latest' => 'Gemini 1.5 Pro Latest',
+            'gemini-1.5-pro-002' => 'Gemini 1.5 Pro 002',
+            'gemini-1.5-pro-001' => 'Gemini 1.5 Pro 001',
+            'gemini-1.5-flash' => 'Gemini 1.5 Flash (Latest)',
+            'gemini-1.5-flash-latest' => 'Gemini 1.5 Flash Latest',
+            'gemini-1.5-flash-002' => 'Gemini 1.5 Flash 002',
+            'gemini-1.5-flash-001' => 'Gemini 1.5 Flash 001',
+            'gemini-1.5-flash-8b' => 'Gemini 1.5 Flash 8B',
+            'gemini-1.5-flash-8b-latest' => 'Gemini 1.5 Flash 8B Latest',
+            'gemini-1.5-flash-8b-001' => 'Gemini 1.5 Flash 8B 001',
+            'gemini-1.0-pro' => 'Gemini 1.0 Pro (Legacy)',
+            'gemini-1.0-pro-latest' => 'Gemini 1.0 Pro Latest (Legacy)',
+            'gemini-1.0-pro-001' => 'Gemini 1.0 Pro 001 (Legacy)',
+        ];
+        ?>
+        
+        <div class="aab-provider-configs">
+            
+            <!-- ═══════════════════════════════════════════
+                 OPENAI CONFIG
+                 ═══════════════════════════════════════════ -->
+            <div class="aab-provider-config" data-provider="openai" style="display:none;">
+                <div class="aab-config-section">
+                    <label class="aab-config-label">OpenAI API Key</label>
+                    <input type="password" 
+                           name="aab_openai_key"
+                           placeholder="Enter OpenAI API Key (sk-...)"
+                           class="aab-modern-input">
+                    <?php if (!empty($openai_key)): ?>
+                        <p class="aab-key-info">
+                            <span class="dashicons dashicons-saved" style="color: #10b981;"></span>
+                            Saved key: <strong>••••••••<?php echo esc_html(substr($openai_key, -4)); ?></strong>
+                            <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=aab_clear_single_key&provider=openai'), 'aab_clear_openai')); ?>" 
+                               class="aab-remove-key-link"
+                               onclick="return confirm('Remove saved OpenAI API key?');">
+                                Remove
+                            </a>
+                        </p>
+                    <?php else: ?>
+                        <p class="aab-key-info aab-no-key"><span class="dashicons dashicons-warning" style="color: #f59e0b;"></span> No key saved yet.</p>
+                    <?php endif; ?>
+                </div>
+
+                <div class="aab-config-section">
+                    <label class="aab-config-label">
+                        OpenAI Model
+                        <span class="aab-model-badge">
+                            <span class="dashicons dashicons-admin-plugins"></span>
+                            <?php echo count($openai_models); ?> models available
+                        </span>
+                    </label>
+                    <select name="aab_openai_model" id="aab-openai-model-select" class="aab-modern-select">
+                        <?php foreach ($openai_models as $key => $label): ?>
+                            <option value="<?php echo esc_attr($key); ?>" <?php selected($openai_model, $key); ?>>
+                                <?php echo esc_html($label); ?>
+                            </option>
+                        <?php endforeach; ?>
+                        <option value="custom" <?php selected($openai_model, 'custom'); ?>>🔧 Custom Model</option>
+                    </select>
+                    <p class="description">Select OpenAI model or use custom</p>
+                    
+                    <!-- Custom Model Input -->
+                    <div id="aab-openai-custom-wrapper" style="<?php echo ($openai_model === 'custom' || !empty($openai_custom)) ? '' : 'display:none;'; ?> margin-top: 15px;">
+                        <label class="aab-config-label">
+                            <span class="dashicons dashicons-admin-tools" style="color: #8b5cf6;"></span>
+                            Custom Model Name
+                        </label>
+                        <input type="text" 
+                               name="aab_openai_custom_model"
+                               id="aab-openai-custom-input"
+                               value="<?php echo esc_attr($openai_custom); ?>"
+                               placeholder="e.g., gpt-4-custom or gpt-5"
+                               class="aab-modern-input aab-custom-model-input">
+                        <p class="description">Enter exact model identifier from OpenAI</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════
+                 CLAUDE CONFIG
+                 ═══════════════════════════════════════════ -->
+            <div class="aab-provider-config" data-provider="claude" style="display:none;">
+                <div class="aab-config-section">
+                    <label class="aab-config-label">Claude API Key</label>
+                    <input type="password" 
+                           name="aab_claude_key"
+                           placeholder="Enter Claude API Key (sk-ant-...)"
+                           class="aab-modern-input">
+                    <?php if (!empty($claude_key)): ?>
+                        <p class="aab-key-info">
+                            <span class="dashicons dashicons-saved" style="color: #10b981;"></span>
+                            Saved key: <strong>••••••••<?php echo esc_html(substr($claude_key, -4)); ?></strong>
+                            <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=aab_clear_single_key&provider=claude'), 'aab_clear_claude')); ?>" 
+                               class="aab-remove-key-link"
+                               onclick="return confirm('Remove saved Claude API key?');">
+                                Remove
+                            </a>
+                        </p>
+                    <?php else: ?>
+                        <p class="aab-key-info aab-no-key"><span class="dashicons dashicons-warning" style="color: #f59e0b;"></span> No key saved yet.</p>
+                    <?php endif; ?>
+                </div>
+
+                <div class="aab-config-section">
+                    <label class="aab-config-label">
+                        Claude Model
+                        <span class="aab-model-badge">
+                            <span class="dashicons dashicons-admin-plugins"></span>
+                            <?php echo count($claude_models); ?> models available
+                        </span>
+                    </label>
+                    <select name="aab_claude_model" id="aab-claude-model-select" class="aab-modern-select">
+                        <?php foreach ($claude_models as $key => $label): ?>
+                            <option value="<?php echo esc_attr($key); ?>" <?php selected($claude_model, $key); ?>>
+                                <?php echo esc_html($label); ?>
+                            </option>
+                        <?php endforeach; ?>
+                        <option value="custom" <?php selected($claude_model, 'custom'); ?>>🔧 Custom Model</option>
+                    </select>
+                    <p class="description">Select Claude model or use custom</p>
+                    
+                    <!-- Custom Model Input -->
+                    <div id="aab-claude-custom-wrapper" style="<?php echo ($claude_model === 'custom' || !empty($claude_custom)) ? '' : 'display:none;'; ?> margin-top: 15px;">
+                        <label class="aab-config-label">
+                            <span class="dashicons dashicons-admin-tools" style="color: #8b5cf6;"></span>
+                            Custom Model Name
+                        </label>
+                        <input type="text" 
+                               name="aab_claude_custom_model"
+                               id="aab-claude-custom-input"
+                               value="<?php echo esc_attr($claude_custom); ?>"
+                               placeholder="e.g., claude-4-opus-custom"
+                               class="aab-modern-input aab-custom-model-input">
+                        <p class="description">Enter exact model identifier from Anthropic</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════
+                 GEMINI CONFIG
+                 ═══════════════════════════════════════════ -->
+            <div class="aab-provider-config" data-provider="gemini" style="display:none;">
+                <div class="aab-config-section">
+                    <label class="aab-config-label">Gemini API Key</label>
+                    <input type="password" 
+                           name="aab_gemini_key"
+                           placeholder="Enter Gemini API Key (AIza...)"
+                           class="aab-modern-input">
+                    <?php if (!empty($gemini_key)): ?>
+                        <p class="aab-key-info">
+                            <span class="dashicons dashicons-saved" style="color: #10b981;"></span>
+                            Saved key: <strong>••••••••<?php echo esc_html(substr($gemini_key, -4)); ?></strong>
+                            <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=aab_clear_single_key&provider=gemini'), 'aab_clear_gemini')); ?>" 
+                               class="aab-remove-key-link"
+                               onclick="return confirm('Remove saved Gemini API key?');">
+                                Remove
+                            </a>
+                        </p>
+                    <?php else: ?>
+                        <p class="aab-key-info aab-no-key"><span class="dashicons dashicons-warning" style="color: #f59e0b;"></span> No key saved yet.</p>
+                    <?php endif; ?>
+                </div>
+
+                <div class="aab-config-section">
+                    <label class="aab-config-label">
+                        Gemini Model
+                        <span class="aab-model-badge">
+                            <span class="dashicons dashicons-admin-plugins"></span>
+                            <?php echo count($gemini_models); ?> models available
+                        </span>
+                    </label>
+                    <select name="aab_gemini_model" id="aab-gemini-model-select" class="aab-modern-select">
+                        <?php foreach ($gemini_models as $key => $label): ?>
+                            <option value="<?php echo esc_attr($key); ?>" <?php selected($gemini_model, $key); ?>>
+                                <?php echo esc_html($label); ?>
+                            </option>
+                        <?php endforeach; ?>
+                        <option value="custom" <?php selected($gemini_model, 'custom'); ?>>🔧 Custom Model</option>
+                    </select>
+                    <p class="description">Select Gemini model or use custom</p>
+                    
+                    <!-- Custom Model Input -->
+                    <div id="aab-gemini-custom-wrapper" style="<?php echo ($gemini_model === 'custom' || !empty($gemini_custom)) ? '' : 'display:none;'; ?> margin-top: 15px;">
+                        <label class="aab-config-label">
+                            <span class="dashicons dashicons-admin-tools" style="color: #8b5cf6;"></span>
+                            Custom Model Name
+                        </label>
+                        <input type="text" 
+                               name="aab_gemini_custom_model"
+                               id="aab-gemini-custom-input"
+                               value="<?php echo esc_attr($gemini_custom); ?>"
+                               placeholder="e.g., gemini-3.0-ultra or gemini-custom"
+                               class="aab-modern-input aab-custom-model-input">
+                        <p class="description">Enter exact model identifier from Google AI</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <script>
+        function aabToggleProviderFields() {
+            const provider = document.getElementById('aab_ai_provider').value;
+            console.log('AAB Settings: Switching to provider:', provider);
+            
+            // Show/hide provider config sections
+            document.querySelectorAll('.aab-provider-config').forEach(config => {
+                const configProvider = config.getAttribute('data-provider');
+                if (configProvider === provider) {
+                    config.style.display = 'block';
+                    console.log('AAB Settings: Showing config for', configProvider);
+                } else {
+                    config.style.display = 'none';
+                }
+            });
+        }
+
+        // Handle custom model toggle for all providers
+        function setupCustomModelToggles() {
+            // OpenAI
+            const openaiSelect = document.getElementById('aab-openai-model-select');
+            const openaiCustom = document.getElementById('aab-openai-custom-wrapper');
+            if (openaiSelect && openaiCustom) {
+                openaiSelect.addEventListener('change', function() {
+                    openaiCustom.style.display = this.value === 'custom' ? 'block' : 'none';
+                });
+            }
+
+            // Claude
+            const claudeSelect = document.getElementById('aab-claude-model-select');
+            const claudeCustom = document.getElementById('aab-claude-custom-wrapper');
+            if (claudeSelect && claudeCustom) {
+                claudeSelect.addEventListener('change', function() {
+                    claudeCustom.style.display = this.value === 'custom' ? 'block' : 'none';
+                });
+            }
+
+            // Gemini
+            const geminiSelect = document.getElementById('aab-gemini-model-select');
+            const geminiCustom = document.getElementById('aab-gemini-custom-wrapper');
+            if (geminiSelect && geminiCustom) {
+                geminiSelect.addEventListener('change', function() {
+                    geminiCustom.style.display = this.value === 'custom' ? 'block' : 'none';
+                });
+            }
+        }
+
+        // Run on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('AAB Settings: Page loaded, initializing provider fields');
+            aabToggleProviderFields();
+            setupCustomModelToggles();
+        });
+        </script>
+
+        <style>
+        .aab-provider-configs {
+            margin-top: 20px;
+        }
+        
+        .aab-provider-config {
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .aab-config-section {
+            margin-bottom: 24px;
+        }
+        
+        .aab-config-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .aab-config-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+        
+        .aab-model-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #eff6ff;
+            color: #1e40af;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: auto;
+        }
+        
+        .aab-model-badge .dashicons {
+            font-size: 14px;
+            width: 14px;
+            height: 14px;
+        }
+        
+        .aab-custom-model-input {
+            border: 2px dashed #a78bfa !important;
+            background: #faf5ff !important;
+        }
+        
+        .aab-custom-model-input:focus {
+            border-color: #8b5cf6 !important;
+            background: #ffffff !important;
+        }
+        
+        .aab-key-info {
+            margin-top: 10px;
+            color: #6b7280;
+            font-size: 0.94rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .aab-key-info .dashicons {
+            font-size: 18px;
+            width: 18px;
+            height: 18px;
+        }
+        
+        .aab-no-key {
+            color: #d97706;
+        }
+        
+        .aab-remove-key-link {
+            color: #dc3545;
+            text-decoration: none;
+            margin-left: 10px;
+            font-weight: 500;
+        }
+        
+        .aab-remove-key-link:hover {
+            color: #b91c1c;
+            text-decoration: underline;
+        }
+        </style>
+        <?php
+    }
+
+    public static function handle_clear_single_key() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        $provider = isset($_GET['provider']) ? sanitize_text_field($_GET['provider']) : '';
+
+        if (empty($provider) || empty($_GET['_wpnonce'])) {
+            wp_die('Invalid request');
+        }
+
+        if (!wp_verify_nonce($_GET['_wpnonce'], 'aab_clear_' . $provider)) {
+            wp_die('Invalid nonce');
+        }
+
+        $cleared = '';
+
+        if ($provider === 'openai') {
+            delete_option('aab_openai_key');
+            delete_option('aab_api_key'); // backward compatibility
+            $cleared = 'OpenAI';
+        } elseif ($provider === 'claude') {
+            delete_option('aab_claude_key');
+            $cleared = 'Claude';
+        } elseif ($provider === 'gemini') {
+            delete_option('aab_gemini_key');
+            $cleared = 'Gemini';
+        }
+
+        $redirect = admin_url('admin.php?page=aab-settings');
+        if (!empty($cleared)) {
+            $redirect = add_query_arg('aab_cleared', $cleared, $redirect);
+        }
+
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
+    public static function page() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        // Show notices
+        if (!empty($_GET['aab_cleared'])) {
+            $val = sanitize_text_field($_GET['aab_cleared']);
+            $which = esc_html($val);
+            echo '<div class="notice notice-success is-dismissible"><p>Removed saved API key: ' . $which . '</p></div>';
+        }
+
+        if (!empty($_GET['license_activated'])) {
+            echo '<div class="notice notice-success is-dismissible"><p><strong>Success!</strong> Your license has been activated.</p></div>';
+        }
+
+        if (!empty($_GET['license_deactivated'])) {
+            echo '<div class="notice notice-info is-dismissible"><p>Your license has been deactivated.</p></div>';
+        }
+
+        if (!empty($_GET['license_error'])) {
+            $error_type = sanitize_text_field($_GET['license_error']);
+            if ($error_type === 'empty') {
+                echo '<div class="notice notice-error is-dismissible"><p><strong>Error:</strong> Please enter a valid license key.</p></div>';
+            } elseif ($error_type === 'custom' && !empty($_GET['error_msg'])) {
+                $error_msg = sanitize_text_field($_GET['error_msg']);
+                echo '<div class="notice notice-error is-dismissible"><p><strong>Error:</strong> ' . esc_html($error_msg) . '</p></div>';
+            } else {
+                echo '<div class="notice notice-error is-dismissible"><p><strong>Error:</strong> An error occurred. Please try again.</p></div>';
+            }
+        }
+
+        // Get license info from database
+        $license_key = get_option('aab_license_key', '');
+        $license_purchased = get_option('aab_license_purchased', '');
+        
+        // Check if license is actually active
+        $is_activated = \AAB\Core\License::is_license_active();
+        
+        // If we have a saved key, get full info from database
+        if (!empty($license_key)) {
+            $license_info = \AAB\Core\License::get_license_info($license_key);
+            if ($license_info) {
+                $license_purchased = date('F jS, Y', strtotime($license_info['purchase_date']));
+                $is_activated = $license_info['is_activated'];
+            }
+        }
+
+        // Get current provider
+        $current_provider = get_option('aab_ai_provider', 'openai');
+        ?>
+
+        <div class="wrap aab-settings-wrap">
+
+            <h1>AI Auto Blog — Settings</h1>
+
+            <div class="aab-settings-grid-single">
+
+                <!-- Main Settings Card (Full Width) -->
+                <div class="aab-settings-card">
+                    <div class="aab-card-header">
+                        <h2>AI Provider Configuration</h2>
+                        <p class="aab-card-subtitle">Configure your AI provider, API keys, and models</p>
+                    </div>
+
+                    <form method="post" action="options.php" class="aab-settings-form">
+                        <?php
+                        settings_fields('aab_settings');
+                        do_settings_sections('aab-settings');
+                        ?>
+
+                        <div class="aab-submit-wrapper">
+                            <button type="submit" name="submit" id="submit" class="aab-save-btn">
+                                <span class="dashicons dashicons-saved"></span>
+                                Save Settings
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+            </div>
+
+            <!-- License Section (Full Width at Bottom) -->
+            <div class="aab-license-section">
+                <div class="aab-settings-card aab-license-card">
+                    <div class="aab-card-header">
+                        <h2>
+                            <span class="dashicons dashicons-admin-network"></span>
+                            AI Auto Blog License
+                        </h2>
+                    </div>
+
+                    <?php if ($is_activated): ?>
+                        <!-- LICENSE ACTIVATED - Show Details -->
+                        <div class="aab-license-content">
+                            <div class="aab-license-status-badge aab-license-active">
+                                <span class="dashicons dashicons-yes-alt"></span>
+                                License Activated
+                            </div>
+
+                            <div class="aab-license-key-display">
+                                <?php 
+                                $masked_key = str_repeat('•', max(0, strlen($license_key) - 4)) . substr($license_key, -4);
+                                echo esc_html($masked_key); 
+                                ?>
+                            </div>
+
+                            <div class="aab-license-details">
+                                <div class="aab-license-info-grid">
+                                    <div class="aab-license-info-item">
+                                        <span class="aab-license-icon">
+                                            <span class="dashicons dashicons-calendar-alt"></span>
+                                        </span>
+                                        <div>
+                                            <div class="aab-license-info-label">Purchased On</div>
+                                            <div class="aab-license-info-value"><?php echo esc_html($license_purchased); ?></div>
+                                        </div>
+                                    </div>
+                                    <div class="aab-license-info-item">
+                                        <span class="aab-license-icon">
+                                            <span class="dashicons dashicons-shield-alt"></span>
+                                        </span>
+                                        <div>
+                                            <div class="aab-license-info-label">Status</div>
+                                            <div class="aab-license-info-value aab-status-active">Active</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="aab-license-deactivate-form">
+                                <?php wp_nonce_field('aab_deactivate_license'); ?>
+                                <input type="hidden" name="action" value="aab_deactivate_license">
+                                <button type="submit" class="aab-deactivate-btn" onclick="return confirm('Are you sure you want to deactivate your license?');">
+                                    <span class="dashicons dashicons-dismiss"></span>
+                                    Deactivate License
+                                </button>
+                            </form>
+                        </div>
+
+                    <?php else: ?>
+                        <!-- LICENSE NOT ACTIVATED - Show Activation Form -->
+                        <div class="aab-license-content">
+                            <div class="aab-license-status-badge aab-license-inactive">
+                                <span class="dashicons dashicons-warning"></span>
+                                License Not Activated
+                            </div>
+
+                            <div class="aab-license-not-activated-msg">
+                                Please activate your license to unlock all features of AI Auto Blog.
+                            </div>
+
+                            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="aab-license-activate-form">
+                                <?php wp_nonce_field('aab_activate_license'); ?>
+                                <input type="hidden" name="action" value="aab_activate_license">
+
+                                <div class="aab-license-input-group">
+                                    <input type="text" 
+                                           name="license_key" 
+                                           id="aab-license-key" 
+                                           class="aab-license-input" 
+                                           placeholder="Enter your license key (e.g., XXXX-XXXX-XXXX-XXXX)"
+                                           required>
+                                    <button type="submit" class="aab-activate-btn">
+                                        <span class="dashicons dashicons-unlock"></span>
+                                        Activate License
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    <?php endif; ?>
+
+                </div>
+            </div>
+
+        </div>
+
+        <style>
+        /* ────────────────────────────────────────────────
+           Modern Settings Page
+           ──────────────────────────────────────────────── */
+
+        .aab-settings-wrap {
+            max-width: 1100px;
+            margin: 40px auto;
+            padding: 0 24px;
+        }
+
+        .aab-settings-wrap h1 {
+            font-size: 2.4rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 40px;
+        }
+
+        .aab-settings-grid-single {
+            margin-bottom: 40px;
+        }
+
+        .aab-settings-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+        }
+
+        .aab-card-header {
+            padding: 24px 32px;
+            background: linear-gradient(to bottom, #f9fafb, #f1f5f9);
+            border-bottom: 1px solid #e5e7eb;
+            min-height: 100px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .aab-card-header h2 {
+            margin: 0 0 8px 0;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #1f2937;
+            line-height: 1.3;
+            word-wrap: break-word;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .aab-card-header h2 .dashicons {
+            color: #2563eb;
+        }
+
+        .aab-card-subtitle {
+            margin: 0;
+            color: #6b7280;
+            font-size: 0.95rem;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        .aab-settings-form {
+            padding: 32px;
+        }
+
+        .aab-modern-select,
+        .aab-modern-input {
+            width: 100%;
+            max-width: 540px;
+            padding: 13px 18px;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            font-size: 1rem;
+            background: white;
+            transition: all 0.2s ease;
+        }
+
+        .aab-modern-select:disabled {
+            background: #f3f4f6;
+            color: #6b7280;
+            cursor: not-allowed;
+        }
+
+        .aab-modern-select:focus,
+        .aab-modern-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 4px rgba(59,130,246,0.15);
+            outline: none;
+        }
+
+        .aab-key-field {
+            margin-bottom: 28px;
+        }
+
+        .aab-submit-wrapper {
+            margin-top: 32px;
+            text-align: right;
+        }
+
+        .aab-save-btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(37,99,235,0.25);
+            transition: all 0.25s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .aab-save-btn:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+        }
+
+        .aab-save-btn .dashicons {
+            font-size: 18px;
+            width: 18px;
+            height: 18px;
+        }
+
+        /* ────────────────────────────────────────────────
+           LICENSE SECTION
+           ──────────────────────────────────────────────── */
+
+        .aab-license-section {
+            margin-top: 40px;
+        }
+
+        .aab-license-card {
+            max-width: 100%;
+        }
+
+        .aab-license-content {
+            padding: 40px;
+        }
+
+        .aab-license-status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 24px;
+        }
+
+        .aab-license-active {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .aab-license-inactive {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .aab-license-status-badge .dashicons {
+            font-size: 20px;
+            width: 20px;
+            height: 20px;
+        }
+
+        .aab-license-key-display {
+            background: #f8f9fa;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px 24px;
+            font-size: 1.1rem;
+            font-family: monospace;
+            letter-spacing: 2px;
+            color: #1f2937;
+            margin-bottom: 24px;
+        }
+
+        .aab-license-not-activated-msg {
+            color: #374151;
+            font-size: 1rem;
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+
+        .aab-license-details {
+            border-top: 1px solid #e5e7eb;
+            padding-top: 24px;
+            margin-bottom: 24px;
+        }
+
+        .aab-license-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .aab-license-info-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: #f9fafb;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .aab-license-icon {
+            flex-shrink: 0;
+            width: 40px;
+            height: 40px;
+            background: #eff6ff;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .aab-license-icon .dashicons {
+            color: #2563eb;
+            font-size: 20px;
+            width: 20px;
+            height: 20px;
+        }
+
+        .aab-license-info-label {
+            font-size: 0.85rem;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+
+        .aab-license-info-value {
+            font-size: 1rem;
+            color: #1f2937;
+            font-weight: 600;
+        }
+
+        .aab-status-active {
+            color: #059669;
+        }
+
+        .aab-license-deactivate-form {
+            margin-top: 24px;
+        }
+
+        .aab-deactivate-btn {
+            background: #6b7280;
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.25s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .aab-deactivate-btn:hover {
+            background: #4b5563;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(107,114,128,0.3);
+        }
+
+        .aab-deactivate-btn .dashicons {
+            font-size: 18px;
+            width: 18px;
+            height: 18px;
+        }
+
+        /* License Activation Form */
+        .aab-license-activate-form {
+            max-width: 700px;
+        }
+
+        .aab-license-input-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .aab-license-input {
+            flex: 1;
+            padding: 14px 20px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+
+        .aab-license-input:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 4px rgba(37,99,235,0.1);
+            outline: none;
+        }
+
+        .aab-activate-btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 14px 32px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.25s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .aab-activate-btn:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+        }
+
+        .aab-activate-btn .dashicons {
+            font-size: 18px;
+            width: 18px;
+            height: 18px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .aab-card-header {
+                padding: 20px 24px;
+                min-height: auto;
+            }
+            
+            .aab-card-header h2 {
+                font-size: 1.3rem;
+            }
+            
+            .aab-card-subtitle {
+                font-size: 0.9rem;
+            }
+            
+            .aab-submit-wrapper {
+                text-align: center;
+            }
+            
+            .aab-license-input-group {
+                flex-direction: column;
+            }
+            
+            .aab-license-content {
+                padding: 24px;
+            }
+
+            .aab-license-info-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        </style>
+
+        <script>
+        (function () {
+            // Auto-dismiss notices after 5 seconds
+            setTimeout(function() {
+                const notices = document.querySelectorAll('.notice.is-dismissible');
+                notices.forEach(function(notice) {
+                    notice.style.opacity = '0';
+                    notice.style.transition = 'opacity 0.3s';
+                    setTimeout(function() {
+                        notice.remove();
+                    }, 300);
+                });
+            }, 5000);
+        })();
+        </script>
+        <?php
+    }
+}

@@ -1,0 +1,722 @@
+/* ================================================
+   AAB Campaign UI - Modern Design
+   ================================================ */
+
+/* Keyword Autosuggest Wrapper */
+.aab-kw-wrap {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    width: 100%;
+}
+
+/* Keyword Suggestions Dropdown */
+.aab-kw-suggest {
+    position: absolute;
+    z-index: 9999;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    max-height: 280px;
+    overflow-y: auto;
+    min-width: 280px;
+    font-size: 14px;
+    border-radius: 8px;
+    margin-top: 4px;
+}
+
+.aab-kw-suggest .aab-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background-color 0.15s ease;
+    color: #333;
+}
+
+.aab-kw-suggest .aab-item:hover,
+.aab-kw-suggest .aab-item.aab-active {
+    background: #f0f7ff;
+    color: #2271b1;
+}
+
+/* ================================================
+   Main Container & Layout
+   ================================================ */
+
+.aab-campaign-wrapper {
+    max-width: 1200px;
+    margin: 20px auto;
+    background: #f5f7fa;
+    padding: 20px;
+    border-radius: 12px;
+}
+
+.aab-campaign-header {
+    background: #ffffff;
+    padding: 24px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.aab-campaign-header h1 {
+    margin: 0 0 8px 0;
+    font-size: 24px;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.aab-campaign-header p {
+    margin: 0;
+    color: #64748b;
+    font-size: 14px;
+}
+
+/* ================================================
+   Section Cards
+   ================================================ */
+
+.aab-section {
+    background: #ffffff;
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transition: box-shadow 0.2s ease;
+}
+
+.aab-section:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.aab-section-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 16px 0;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.aab-section-title .dashicons {
+    color: #2271b1;
+    margin-right: 8px;
+}
+
+/* Collapsible Sections */
+.aab-section.collapsible .aab-section-title {
+    cursor: pointer;
+    user-select: none;
+}
+
+.aab-section.collapsible .aab-section-title::after {
+    content: '▼';
+    font-size: 12px;
+    color: #64748b;
+    transition: transform 0.2s ease;
+}
+
+.aab-section.collapsible.collapsed .aab-section-title::after {
+    transform: rotate(-90deg);
+}
+
+.aab-section.collapsible.collapsed .aab-section-content {
+    display: none;
+}
+
+.aab-section-content {
+    padding-top: 8px;
+}
+
+/* ================================================
+   Form Fields
+   ================================================ */
+
+.aab-form-row {
+    margin-bottom: 20px;
+}
+
+.aab-form-row label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: #334155;
+    font-size: 14px;
+}
+
+.aab-form-row input[type="text"],
+.aab-form-row input[type="number"],
+.aab-form-row select,
+.aab-form-row textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    background: #ffffff;
+    color: #1e293b;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.aab-form-row input[type="text"]:focus,
+.aab-form-row input[type="number"]:focus,
+.aab-form-row select:focus,
+.aab-form-row textarea:focus {
+    outline: none;
+    border-color: #2271b1;
+    box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.1);
+}
+
+.aab-form-row textarea {
+    resize: vertical;
+    min-height: 80px;
+    line-height: 1.5;
+}
+
+.aab-form-row small {
+    display: block;
+    margin-top: 6px;
+    color: #64748b;
+    font-size: 13px;
+}
+
+/* Inline Form Groups */
+.aab-form-inline {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.aab-form-inline .aab-form-group {
+    flex: 1;
+    min-width: 200px;
+}
+
+.aab-form-inline .aab-form-group label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: #334155;
+    font-size: 14px;
+}
+
+.aab-form-inline .aab-form-group input,
+.aab-form-inline .aab-form-group select {
+    width: 100%;
+}
+
+/* ================================================
+   Toggle Switch Checkboxes
+   ================================================ */
+
+.aab-checkbox-wrapper,
+.aab-radio-wrapper {
+    display: flex;
+    align-items: center;
+    margin-bottom: 14px;
+    cursor: pointer;
+    position: relative;
+}
+
+/* Hide default checkbox but keep it functional */
+.aab-checkbox-wrapper input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+/* Toggle switch container */
+.aab-checkbox-wrapper .aab-toggle {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    background-color: #cbd5e1;
+    border-radius: 24px;
+    transition: background-color 0.3s ease;
+    margin-right: 12px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+/* Toggle switch slider */
+.aab-checkbox-wrapper .aab-toggle::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background-color: #ffffff;
+    top: 3px;
+    left: 3px;
+    transition: transform 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Checked state - when checkbox is checked */
+.aab-checkbox-wrapper input[type="checkbox"]:checked ~ .aab-toggle {
+    background-color: #3b82f6;
+}
+
+.aab-checkbox-wrapper input[type="checkbox"]:checked ~ .aab-toggle::before {
+    transform: translateX(20px);
+}
+
+/* Hover state */
+.aab-checkbox-wrapper .aab-toggle:hover {
+    opacity: 0.9;
+}
+
+/* Focus state */
+.aab-checkbox-wrapper input[type="checkbox"]:focus ~ .aab-toggle {
+    box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.2);
+}
+
+/* Disabled state */
+.aab-checkbox-wrapper input[type="checkbox"]:disabled ~ .aab-toggle {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Label styling */
+.aab-checkbox-wrapper label {
+    margin: 0;
+    cursor: pointer;
+    font-weight: 400;
+    color: #334155;
+    font-size: 14px;
+    user-select: none;
+    flex: 1;
+}
+
+.aab-checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Radio buttons keep traditional style */
+.aab-radio-wrapper input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    margin: 0 10px 0 0;
+    cursor: pointer;
+    accent-color: #2271b1;
+}
+
+.aab-radio-wrapper label {
+    margin: 0;
+    cursor: pointer;
+    font-weight: 400;
+    color: #334155;
+    font-size: 14px;
+    user-select: none;
+}
+
+/* ================================================
+   Buttons
+   ================================================ */
+
+.aab-btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    text-align: center;
+}
+
+.aab-btn-primary {
+    background: #0b12da;
+    color: #ffffff;
+}
+
+.aab-btn-primary:hover {
+    background: #475569;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(34, 113, 177, 0.2);
+}
+
+.aab-btn-secondary {
+    background: #0b12da;
+    color: #ffffff;
+}
+
+.aab-btn-secondary:hover {
+    background: #475569;
+}
+
+.aab-btn-success {
+    background: #10b981;
+    color: #ffffff;
+}
+
+.aab-btn-success:hover {
+    background: #059669;
+}
+
+.aab-btn-danger {
+    background: #ef4444;
+    color: #ffffff;
+}
+
+.aab-btn-danger:hover {
+    background: #dc2626;
+}
+
+.aab-btn-outline {
+    background: transparent;
+    color: #0b12da;
+    border: 1px solid #0b12da;
+}
+
+.aab-btn-outline:hover {
+    background: #0b12da;
+    color: #ffffff;
+}
+
+.aab-btn-small {
+    padding: 6px 14px;
+    font-size: 13px;
+}
+
+.aab-btn-large {
+    padding: 14px 28px;
+    font-size: 16px;
+}
+
+.aab-button-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid #e2e8f0;
+}
+
+/* ================================================
+   Keywords Tags
+   ================================================ */
+
+.aab-keywords-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 12px;
+    background: #f8fafc;
+    border-radius: 6px;
+    min-height: 60px;
+}
+
+.aab-keyword-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    background: #e0f2fe;
+    color: #0369a1;
+    border-radius: 16px;
+    font-size: 13px;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.aab-keyword-tag:hover {
+    background: #bae6fd;
+}
+
+.aab-keyword-tag .remove {
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 16px;
+    line-height: 1;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+.aab-keyword-tag .remove:hover {
+    opacity: 1;
+    color: #dc2626;
+}
+
+/* ================================================
+   Category Picker
+   ================================================ */
+
+#aab-categories-picker {
+    position: absolute;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 9999;
+    display: none;
+}
+
+#aab-categories-picker > div {
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background-color 0.15s ease;
+    color: #334155;
+    font-size: 14px;
+}
+
+#aab-categories-picker > div:hover {
+    background: #f0f7ff;
+    color: #2271b1;
+}
+
+#aab-categories-picker > div:last-child {
+    border-bottom: none;
+}
+
+/* ================================================
+   Info Boxes
+   ================================================ */
+
+.aab-info-box {
+    padding: 14px 16px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.aab-info-box.info {
+    background: #eff6ff;
+    border-left: 4px solid #3b82f6;
+    color: #1e40af;
+}
+
+.aab-info-box.warning {
+    background: #fef3c7;
+    border-left: 4px solid #f59e0b;
+    color: #92400e;
+}
+
+.aab-info-box.success {
+    background: #d1fae5;
+    border-left: 4px solid #10b981;
+    color: #065f46;
+}
+
+.aab-info-box.error {
+    background: #fee2e2;
+    border-left: 4px solid #ef4444;
+    color: #991b1b;
+}
+
+/* ================================================
+   Grid Layout
+   ================================================ */
+
+.aab-grid {
+    display: grid;
+    gap: 16px;
+}
+
+.aab-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.aab-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.aab-grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 992px) {
+    .aab-grid-2,
+    .aab-grid-3,
+    .aab-grid-4 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ================================================
+   Toggle Switch
+   ================================================ */
+
+.aab-toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 24px;
+}
+
+.aab-toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.aab-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #cbd5e1;
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.aab-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+.aab-toggle-switch input:checked + .aab-toggle-slider {
+    background-color: #3b82f6;
+}
+
+.aab-toggle-switch input:checked + .aab-toggle-slider:before {
+    transform: translateX(24px);
+}
+
+/* ================================================
+   Responsive Design
+   ================================================ */
+
+@media (max-width: 768px) {
+    .aab-campaign-wrapper {
+        padding: 12px;
+    }
+
+    .aab-section {
+        padding: 16px;
+    }
+
+    .aab-campaign-header {
+        padding: 16px;
+    }
+
+    .aab-form-inline {
+        flex-direction: column;
+    }
+
+    .aab-button-group {
+        flex-direction: column;
+    }
+
+    .aab-btn {
+        width: 100%;
+    }
+}
+
+/* ================================================
+   Utility Classes
+   ================================================ */
+
+.aab-mt-10 { margin-top: 10px; }
+.aab-mt-20 { margin-top: 20px; }
+.aab-mb-10 { margin-bottom: 10px; }
+.aab-mb-20 { margin-bottom: 20px; }
+.aab-text-muted { color: #64748b; }
+.aab-text-center { text-align: center; }
+.aab-text-right { text-align: right; }
+.aab-hidden { display: none; }
+
+/* ================================================
+   Loading Spinner
+   ================================================ */
+
+.aab-spinner {
+    border: 3px solid #f3f4f6;
+    border-top: 3px solid #2271b1;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: aab-spin 1s linear infinite;
+    display: inline-block;
+    margin-right: 8px;
+}
+
+@keyframes aab-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ================================================
+   Status Badge
+   ================================================ */
+
+.aab-status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.aab-status-badge.active {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.aab-status-badge.paused {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.aab-status-badge.disabled {
+    background: #f1f5f9;
+    color: #64748b;
+}.aab-sticky-actions {
+    position: sticky;
+    top: 32px; /* WordPress admin bar offset */
+    z-index: 999;
+    background: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 12px 20px;
+    margin: -20px -20px 30px -20px;
+}
+
+.aab-sticky-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.aab-sticky-left {
+    font-size: 15px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.aab-sticky-right {
+    display: flex;
+    gap: 10px;
+}
+
+/* Smooth shadow when scrolling */
+.aab-sticky-actions.is-stuck {
+    box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+}

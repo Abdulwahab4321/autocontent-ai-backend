@@ -1,0 +1,15 @@
+/* includes/Extensions/css/image-integration.css */
+.aab-box {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 16px;
+  margin: 20px 0;
+}
+.aab-box h2 { margin-top: 0; font-size: 16px; }
+.aab-box .muted { color:#6b7280; font-size:13px; }
+.aab-box textarea.large-text { width:100%; box-sizing:border-box; }
+
+/* .row label {
+  margin: 0;
+} */
