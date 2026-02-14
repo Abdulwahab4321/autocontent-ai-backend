@@ -29,6 +29,16 @@ app.use(
   })
 );
 
+// Ensure CORS header on every response (including errors) so browser sees it
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  next();
+});
+
 // PRD: Rate limiting – apply to auth and sensitive routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

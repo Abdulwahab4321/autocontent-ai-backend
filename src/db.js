@@ -4,7 +4,10 @@ const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/autoco
 
 async function connectDB() {
   try {
-    await mongoose.connect(MONGODB_URI);
+    await mongoose.connect(MONGODB_URI, {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 10000,
+    });
     console.log("MongoDB connected");
     // Drop old stripeSessionId unique index if present (allowed only one null; caused E11000 on mock checkout).
     const db = mongoose.connection.db;
