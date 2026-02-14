@@ -70,16 +70,20 @@ app.use((req, res, next) => {
   next();
 });
 
-// PRD: Rate limiting – apply to auth and sensitive routes
+// PRD: Rate limiting – apply to auth and sensitive routes.
+// validate.xForwardedForHeader: false – Nginx sends X-Forwarded-For; we set trust proxy, so skip lib check.
+const rateLimitValidate = { xForwardedForHeader: false };
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 50,
   message: { message: "Too many attempts, try again later" },
+  validate: rateLimitValidate,
 });
 const apiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000,
   max: 100,
   message: { message: "Too many requests" },
+  validate: rateLimitValidate,
 });
 
 // Stripe webhook must receive raw body for signature verification (PRD: Stripe webhook verification)

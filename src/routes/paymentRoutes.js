@@ -1,4 +1,5 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const config = require("../config");
 const User = require("../models/User");
 const Purchase = require("../models/Purchase");
@@ -208,6 +209,9 @@ async function stripeWebhookHandler(req, res) {
         ? session.metadata.planId
         : null;
       const licenseCount = planId ? PLAN_LICENSES[planId] : 1;
+      const dbName = mongoose.connection?.db?.databaseName ?? "?";
+      const unusedCount = await License.countDocuments({ status: "unused" });
+      console.log("[webhook] DB:", dbName, "| Unused:", unusedCount, "| need:", licenseCount, "| userId:", user._id.toString());
       const assigned = await assignLicensesFromPool(user._id, licenseCount);
       await Purchase.create({
         userId: user._id,
@@ -245,6 +249,17 @@ router.get("/history", auth, async (req, res) => {
     return res.json(out);
   } catch (err) {
     return res.status(500).json({ message: err.message || "Failed to load history" });
+  }
+});
+
+/** GET /api/payments/debug-db – verify which DB backend is using (no auth). Remove in production if needed. */
+router.get("/debug-db", async (req, res) => {
+  try {
+    const dbName = mongoose.connection?.db?.databaseName ?? "not connected";
+    const unusedCount = await License.countDocuments({ status: "unused" });
+    return res.json({ dbName, unusedLicenses: unusedCount });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 
