@@ -41,18 +41,21 @@ router.post("/signup", async (req, res) => {
       return res.status(400).json({ message: "Password must be at least 6 characters" });
     }
 
-    const existing = await User.findOne({ email: trimmedEmail });
-    if (existing) {
-      return res.status(409).json({ message: "An account with this email already exists" });
-    }
-
     const role = isAdminEmail(trimmedEmail) ? "admin" : "customer";
-    const user = await User.create({
-      email: trimmedEmail,
-      passwordHash: hashPassword(password),
-      role,
-      isAdmin: role === "admin",
-    });
+    let user;
+    try {
+      user = await User.create({
+        email: trimmedEmail,
+        passwordHash: hashPassword(password),
+        role,
+        isAdmin: role === "admin",
+      });
+    } catch (createErr) {
+      if (createErr.code === 11000) {
+        return res.status(409).json({ message: "An account with this email already exists" });
+      }
+      throw createErr;
+    }
 
     const safeUser = { id: user._id.toString(), email: user.email };
     const token = createToken(safeUser);
