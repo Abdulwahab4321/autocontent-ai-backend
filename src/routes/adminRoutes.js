@@ -16,7 +16,7 @@ async function assignLicenseFromPool(userId, product = "wordpress-plugin") {
         assignedAt: new Date(),
       },
     },
-    { new: true }
+    { returnDocument: "after" }
   );
   return license;
 }
@@ -82,7 +82,7 @@ router.post("/licenses/:id/revoke", async (req, res) => {
     const license = await License.findByIdAndUpdate(
       id,
       { status: "revoked" },
-      { new: true }
+      { returnDocument: "after" }
     );
     if (!license) {
       return res.status(404).json({ message: "License not found" });

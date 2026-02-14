@@ -10,6 +10,9 @@ const { adminRoutes } = require("./routes/adminRoutes");
 
 const app = express();
 
+// Nginx sends X-Forwarded-For; required for express-rate-limit behind proxy
+app.set("trust proxy", 1);
+
 // Allow multiple origins: set FRONTEND_URL to "http://localhost:3000,https://autocontentai.co"
 // Response must send exactly ONE origin (browser rejects comma-separated).
 const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")

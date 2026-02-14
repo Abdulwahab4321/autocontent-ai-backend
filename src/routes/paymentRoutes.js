@@ -19,7 +19,7 @@ async function assignLicenseFromPool(userId) {
         assignedAt: new Date(),
       },
     },
-    { new: true }
+    { returnDocument: "after" }
   );
   return license;
 }
