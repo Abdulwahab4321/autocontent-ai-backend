@@ -1,6 +1,8 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
+const License = require("./models/License");
 const { authRoutes } = require("./routes/authRoutes");
 const { userRoutes } = require("./routes/userRoutes");
 const { paymentRoutes, stripeWebhookHandler } = require("./routes/paymentRoutes");
@@ -103,5 +105,16 @@ app.use("/api/plugin", apiLimiter, pluginRoutes);
 app.use("/api/admin", apiLimiter, adminRoutes);
 
 app.get("/api/health", (_, res) => res.json({ ok: true }));
+
+/** GET /api/debug-db – verify which DB backend is using (no auth). */
+app.get("/api/debug-db", async (_, res) => {
+  try {
+    const dbName = mongoose.connection?.db?.databaseName ?? "not connected";
+    const unusedCount = await License.countDocuments({ status: "unused" });
+    return res.json({ dbName, unusedLicenses: unusedCount });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 module.exports = app;
