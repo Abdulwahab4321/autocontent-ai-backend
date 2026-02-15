@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) exit;
 // Get SEO statistics
 $seo_stats = \AAB\Extensions\SEOStats::get_stats();
 
-// Get all AI Auto Blog posts for the table
+// Get all AAutoContent AI posts for the table
 $all_posts = get_posts([
     'post_type' => 'post',
     'meta_key' => 'aab_campaign_id',

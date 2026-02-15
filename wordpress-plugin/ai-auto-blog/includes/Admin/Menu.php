@@ -20,15 +20,24 @@ class Menu {
      * Enqueue admin assets (CSS and JS)
      */
     public static function enqueue_admin_assets($hook) {
-        // Only load on our plugin pages
+        // FIXED: Updated page hooks to match "Auto Content AI" menu name
+        // WordPress generates hook names based on menu title, so we need both old and new formats
         $our_pages = [
             'toplevel_page_aab-dashboard',
+            // Old format (when named "AI Auto Blog")
             'ai-auto-blog_page_aab-campaigns',
             'ai-auto-blog_page_aab-new-campaign',
             'ai-auto-blog_page_aab-seo',
             'ai-auto-blog_page_aab-settings',
             'ai-auto-blog_page_aab-import-export',
             'ai-auto-blog_page_aab-log',
+            // New format (when named "Auto Content AI")
+            'auto-content-ai_page_aab-campaigns',
+            'auto-content-ai_page_aab-new-campaign',
+            'auto-content-ai_page_aab-seo',
+            'auto-content-ai_page_aab-settings',
+            'auto-content-ai_page_aab-import-export',
+            'auto-content-ai_page_aab-log',
         ];
 
         if (in_array($hook, $our_pages)) {
@@ -36,7 +45,7 @@ class Menu {
                 'aab-dashboard-styles',
                 AAB_URL . 'assets/admin/css/aab-dashboard.css',
                 [],
-                '1.0.0'
+                '1.0.3' // ← Version bumped to force reload
             );
         }
     }
@@ -115,22 +124,17 @@ class Menu {
             }
 
             // -- DELETE / TRASH --------------------------------------
-            // FIXED: Now PERMANENTLY deletes from database instead of just moving to trash
             if ( $action === 'delete' ) {
                 if ( wp_verify_nonce( $_GET['_wpnonce'], 'aab_delete_campaign_' . $campaign_id ) ) {
-                    // Verify the post exists
                     $post = get_post( $campaign_id );
                     if ( $post ) {
-                        // PERMANENTLY delete from database (not just trash)
-                        // This removes the post from wp_posts table completely
-                        $deleted = wp_delete_post( $campaign_id, true ); // true = force delete, bypass trash
+                        $deleted = wp_delete_post( $campaign_id, true );
                         
                         if ( $deleted ) {
                             wp_redirect( admin_url( 'admin.php?page=aab-campaigns&msg=deleted' ) );
                             exit;
                         }
                     }
-                    // If doesn't exist or delete failed, just redirect
                     wp_redirect( admin_url( 'admin.php?page=aab-campaigns&msg=deleted' ) );
                     exit;
                 }
@@ -155,7 +159,6 @@ class Menu {
                                 'aab_run_interval', 'aab_run_unit', 'aab_post_type', 'aab_post_status',
                                 'aab_post_author', 'aab_set_category', 'aab_categories',
                                 'aab_ai_custom_params', 'aab_ai_max_tokens', 'aab_ai_temperature',
-                                // Image settings
                                 'aab_feat_generate', 'aab_feat_image_method', 'aab_feat_image_model',
                                 'aab_feat_image_size', 'aab_feat_get_image_by_prompt', 'aab_feat_custom_prompt',
                                 'aab_content_image_method', 'aab_content_image_model', 'aab_content_image_size',
@@ -184,11 +187,10 @@ class Menu {
         }
 
         // ============================================================
-        // POST-based bulk actions — verify nonce ONCE here
+        // POST-based bulk actions
         // ============================================================
         if ( isset( $_POST['bulk_action'], $_POST['campaign_ids'], $_POST['_wpnonce'] ) ) {
 
-            // Single nonce verification — do NOT call check_admin_referer again below
             if ( ! wp_verify_nonce( $_POST['_wpnonce'], 'aab_bulk_actions' ) ) {
                 return;
             }
@@ -221,16 +223,12 @@ class Menu {
             }
 
             // -- BULK DELETE -----------------------------------------
-            // FIXED: Now PERMANENTLY deletes from database instead of just moving to trash
             if ( $bulk_action === 'delete' ) {
                 $deleted_count = 0;
                 foreach ( $ids as $id ) {
-                    // Verify the post exists
                     $post = get_post( $id );
                     if ( $post ) {
-                        // PERMANENTLY delete from database (not just trash)
-                        // This removes the post from wp_posts table completely
-                        $deleted = wp_delete_post( $id, true ); // true = force delete, bypass trash
+                        $deleted = wp_delete_post( $id, true );
                         
                         if ( $deleted ) {
                             $deleted_count++;
@@ -265,13 +263,13 @@ class Menu {
 
         // Top-level menu - Dashboard
         add_menu_page(
-            'AI Auto Blog',
-            'AI Auto Blog',
-            'manage_options',
-            self::PARENT_SLUG,
-            [self::class, 'dashboard_page'],
-            'dashicons-megaphone',
-            26
+            'Auto Content AI',              // Page title
+            'Auto Content AI',              // Menu title (CHANGED)
+            'manage_options',               // Capability
+            self::PARENT_SLUG,              // Menu slug
+            [self::class, 'dashboard_page'], // Callback
+            'dashicons-megaphone',          // Icon
+            26                              // Position
         );
 
         // Dashboard submenu (renamed first item)
@@ -304,7 +302,7 @@ class Menu {
             [self::class, 'new_campaign_page']
         );
 
-        // SEO (placeholder)
+        // SEO
         add_submenu_page(
             self::PARENT_SLUG,
             'SEO',
@@ -317,7 +315,7 @@ class Menu {
         // Settings
         add_submenu_page(
             self::PARENT_SLUG,
-            'AI Auto Blog Settings',
+            'Auto Content AI Settings',  // Page title (CHANGED)
             'Settings',
             'manage_options',
             'aab-settings',

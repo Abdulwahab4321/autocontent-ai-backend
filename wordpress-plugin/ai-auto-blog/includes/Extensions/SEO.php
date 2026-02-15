@@ -4,7 +4,7 @@ namespace AAB\Extensions;
 if (!defined('ABSPATH')) exit;
 
 /**
- * SEO Integration for AI Auto Blog (WITH DEBUGGING)
+ * SEO Integration for AutoContent AI (WITH DEBUGGING)
  * 
  * This class handles all SEO-related features:
  * - Meta titles & descriptions
@@ -53,7 +53,7 @@ class SEO {
     
     /**
      * Disable SEO plugin meta output to prevent duplicates
-     * Only for AI Auto Blog posts
+     * Only for AutoContent AI posts
      */
     public static function disable_plugin_meta_output() {
         // Only disable on single posts
@@ -90,7 +90,7 @@ class SEO {
         add_filter('aioseo_description', '__return_false', 999);
         add_filter('aioseo_title', '__return_false', 999);
         
-        error_log('AAB SEO: Disabled plugin meta output for AI Auto Blog post ' . $post->ID);
+        error_log('AAB SEO: Disabled plugin meta output for AutoContent AI post ' . $post->ID);
     }
     
     /**
@@ -131,7 +131,7 @@ class SEO {
         $focus_keyword = get_post_meta($post->ID, '_yoast_wpseo_focuskw', true)
                       ?: get_post_meta($post->ID, 'rank_math_focus_keyword', true);
         
-        echo "\n" . '<!-- AI Auto Blog - Custom SEO Meta Tags -->' . "\n";
+        echo "\n" . '<!-- AutoContent AI - Custom SEO Meta Tags -->' . "\n";
         
         // Always output meta title (now has fallback)
         echo '<meta name="title" content="' . esc_attr($meta_title) . '">' . "\n";
@@ -179,7 +179,7 @@ class SEO {
         error_log('AAB SEO: Campaign ID from post meta: ' . ($campaign_id ? $campaign_id : 'NOT FOUND'));
         
         if (!$campaign_id) {
-            error_log('AAB SEO: ❌ No campaign ID found - this post was not created by AI Auto Blog');
+            error_log('AAB SEO: ❌ No campaign ID found - this post was not created by AutoContent AI');
             error_log('AAB SEO: Checking all meta keys for this post:');
             $all_meta = get_post_meta($post_id);
             foreach ($all_meta as $key => $value) {
@@ -247,15 +247,38 @@ class SEO {
         update_post_meta($post_id, '_aioseo_description', $meta_description);
         error_log('AAB SEO:    ✅ Saved to All in One SEO (_aioseo_description)');
         
-        // Set focus keyword (if using Yoast/Rank Math)
-        $keyword = get_post_meta($campaign_id, 'aab_seo_focus_keyword', true);
+        // Set focus keyword - Use campaign keyword OR custom SEO keyword
+        $keyword = get_post_meta($post_id, 'aab_keyword', true); // From campaign
+        if (!$keyword) {
+            $keyword = get_post_meta($campaign_id, 'aab_seo_focus_keyword', true); // Custom SEO keyword
+        }
+        
         if ($keyword) {
             error_log('AAB SEO: Focus keyword: ' . $keyword);
+            
+            // Save to Yoast
             update_post_meta($post_id, '_yoast_wpseo_focuskw', $keyword);
+            
+            // Save to Rank Math (important!)
             update_post_meta($post_id, 'rank_math_focus_keyword', $keyword);
-            error_log('AAB SEO:    ✅ Saved focus keyword');
+            
+            // Save to AIOSEO
+            update_post_meta($post_id, '_aioseo_keyphrases', json_encode([
+                'focus' => [
+                    'keyphrase' => $keyword,
+                    'score' => 0
+                ]
+            ]));
+            
+            error_log('AAB SEO:    ✅ Saved focus keyword to all plugins');
+            
+            // Run content optimizer to fix all Rank Math issues
+            if (class_exists('\AAB\Extensions\SEOContentOptimizer')) {
+                error_log('AAB SEO: Running advanced content optimizer...');
+                \AAB\Extensions\SEOContentOptimizer::optimize_post_content($post_id, $post);
+            }
         } else {
-            error_log('AAB SEO: No focus keyword set for campaign');
+            error_log('AAB SEO: ⚠️ No keyword found for SEO optimization');
         }
         
         error_log('AAB SEO: ✅✅✅ SEO meta successfully saved for post ' . $post_id . ' ✅✅✅');
@@ -265,7 +288,6 @@ class SEO {
     /**
      * Generate optimized meta title
      * Template: {Post Title} | {Site Name}
-     * Max length: 60 characters
      */
     private static function generate_meta_title($post) {
         error_log('AAB SEO: generate_meta_title() called');
@@ -298,14 +320,11 @@ class SEO {
             error_log('AAB SEO: Using default (post title only)');
         }
         
-        // Truncate to 60 characters
-        if (strlen($meta_title) > 60) {
-            $original = $meta_title;
-            $meta_title = substr($meta_title, 0, 57) . '...';
-            error_log('AAB SEO: Truncated from ' . strlen($original) . ' to 60 chars');
-        }
+        // No truncation - let Google handle optimal display length
+        // Google typically shows 50-60 characters, but can show up to 70+
+        // Better to provide full title and let Google decide
         
-        error_log('AAB SEO: Final meta title: ' . $meta_title);
+        error_log('AAB SEO: Final meta title: ' . $meta_title . ' (length: ' . strlen($meta_title) . ' chars)');
         return $meta_title;
     }
     
@@ -432,7 +451,7 @@ class SEO {
         ];
         
         error_log('AAB SEO: ✅ Outputting Schema markup to page <head>');
-        echo "\n" . '<!-- AI Auto Blog - Schema.org Markup -->' . "\n";
+        echo "\n" . '<!-- AutoContent AI - Schema.org Markup -->' . "\n";
         echo '<script type="application/ld+json">' . wp_json_encode($schema, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . '</script>' . "\n";
         error_log('AAB SEO: ✅ Schema markup added successfully');
     }
@@ -581,7 +600,7 @@ class SEO {
         error_log('AAB SEO: Using meta_description: ' . substr($meta_description, 0, 100) . '...');
         error_log('AAB SEO: ✅ Outputting social meta tags');
         
-        echo "\n" . '<!-- AI Auto Blog - Social Media Tags -->' . "\n";
+        echo "\n" . '<!-- AutoContent AI - Social Media Tags -->' . "\n";
         
         // Open Graph (Facebook, LinkedIn, etc.)
         echo '<meta property="og:title" content="' . esc_attr($meta_title) . '">' . "\n";

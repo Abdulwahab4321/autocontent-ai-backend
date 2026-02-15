@@ -7,19 +7,255 @@ if (!defined('ABSPATH')) {
 
 class Settings {
 
+    // ═══════════════════════════════════════════════════════
+    // LICENSE API CONFIGURATION
+    // ═══════════════════════════════════════════════════════
+    const LICENSE_API_BASE = 'https://backend.autocontentai.co/api'; // ✅ No trailing slash
+
     public static function init() {
         add_action('admin_init', [self::class, 'register']);
         add_action('admin_post_aab_clear_single_key', [self::class, 'handle_clear_single_key']);
+        
+        // License activation/deactivation handlers
+        add_action('admin_post_aab_activate_license', [self::class, 'handle_activate_license']);
+        add_action('admin_post_aab_deactivate_license', [self::class, 'handle_deactivate_license']);
     }
 
+    public static function handle_activate_license() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        if (empty($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'aab_activate_license')) {
+            wp_die('Invalid nonce');
+        }
+
+        $license_key = isset($_POST['license_key']) ? sanitize_text_field($_POST['license_key']) : '';
+
+        if (empty($license_key)) {
+            wp_redirect(admin_url('admin.php?page=aab-settings&license_error=empty'));
+            exit;
+        }
+
+        $site_domain = self::get_site_domain();
+        
+        error_log('═══════════════════════════════════════════════════════');
+        error_log('AAB License: Starting activation...');
+        error_log('AAB License: Key: ' . substr($license_key, 0, 10) . '...');
+        error_log('AAB License: Domain: ' . $site_domain);
+        
+        $api_response = self::verify_license_with_api($license_key, $site_domain);
+
+        if ($api_response['success']) {
+            // ✅ API returned 200 - License is valid
+            error_log('AAB License: ✅ Activation SUCCESS - Saving data');
+            
+            update_option('aab_license_key', $license_key);
+            update_option('aab_license_activated', '1');
+            update_option('aab_license_domain', $site_domain);
+            update_option('aab_license_activated_at', current_time('mysql'));
+            
+            // Save additional data if API provides it
+            if (!empty($api_response['data']['purchase_date'])) {
+                update_option('aab_license_purchased', $api_response['data']['purchase_date']);
+            }
+            if (!empty($api_response['data']['customer_email'])) {
+                update_option('aab_license_email', $api_response['data']['customer_email']);
+            }
+            if (!empty($api_response['data']['license_type'])) {
+                update_option('aab_license_type', $api_response['data']['license_type']);
+            }
+
+            wp_redirect(admin_url('admin.php?page=aab-settings&license_activated=1'));
+            exit;
+        } else {
+            // ❌ API did not return 200 - License is invalid
+            error_log('AAB License: ❌ Activation FAILED: ' . $api_response['message']);
+            
+            $error_message = !empty($api_response['message']) ? $api_response['message'] : 'License verification failed';
+            wp_redirect(admin_url('admin.php?page=aab-settings&license_error=custom&error_msg=' . urlencode($error_message)));
+            exit;
+        }
+    }
+
+    public static function handle_deactivate_license() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        if (empty($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'aab_deactivate_license')) {
+            wp_die('Invalid nonce');
+        }
+
+        $license_key = get_option('aab_license_key', '');
+        $site_domain = self::get_site_domain();
+
+        error_log('═══════════════════════════════════════════════════════');
+        error_log('AAB License: Starting deactivation...');
+        
+        if (!empty($license_key)) {
+            self::deactivate_license_with_api($license_key, $site_domain);
+        }
+
+        // Delete local license data
+        delete_option('aab_license_key');
+        delete_option('aab_license_activated');
+        delete_option('aab_license_domain');
+        delete_option('aab_license_activated_at');
+        delete_option('aab_license_purchased');
+        delete_option('aab_license_email');
+        delete_option('aab_license_type');
+
+        error_log('AAB License: ✅ Deactivation complete');
+        error_log('═══════════════════════════════════════════════════════');
+
+        wp_redirect(admin_url('admin.php?page=aab-settings&license_deactivated=1'));
+        exit;
+    }
+
+    /**
+     * ═══════════════════════════════════════════════════════
+     * VERIFY LICENSE WITH API
+     * ═══════════════════════════════════════════════════════
+     * 
+     * Simplified version:
+     * - Only checks for 200 status code
+     * - All validation happens on API side
+     * - Returns success or error message
+     */
+    private static function verify_license_with_api($license_key, $domain) {
+        $api_url = self::LICENSE_API_BASE . '/licenses/verify';
+
+        // ✅ Exact request format as specified
+        $request_body = [
+            'key' => $license_key,
+            'domain' => $domain
+        ];
+
+        error_log('AAB License API: Calling: ' . $api_url);
+        error_log('AAB License API: Request: ' . json_encode($request_body));
+
+        $response = wp_remote_post($api_url, [
+            'timeout' => 30,
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json'
+            ],
+            'body' => json_encode($request_body)
+        ]);
+
+        // Handle connection errors
+        if (is_wp_error($response)) {
+            error_log('AAB License API: ❌ Connection error: ' . $response->get_error_message());
+            return [
+                'success' => false,
+                'message' => 'Connection error: ' . $response->get_error_message()
+            ];
+        }
+
+        $status_code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+
+        error_log('AAB License API: Response code: ' . $status_code);
+        error_log('AAB License API: Response body: ' . $body);
+
+        // ✅ SIMPLIFIED: Only check for 200 status
+        // All validation happens on API side
+        if ($status_code === 200) {
+            error_log('AAB License API: ✅ Status 200 - License VALID');
+            
+            // Try to parse response for additional data (optional)
+            $data = json_decode($body, true);
+            
+            return [
+                'success' => true,
+                'data' => $data ?: []
+            ];
+        }
+
+        // ❌ Not 200 = Invalid license
+        error_log('AAB License API: ❌ Status ' . $status_code . ' - License INVALID');
+        
+        // Try to get error message from API response
+        $data = json_decode($body, true);
+        $error_message = 'License verification failed';
+        
+        if (!empty($data['message'])) {
+            $error_message = $data['message'];
+        } elseif (!empty($data['error'])) {
+            $error_message = $data['error'];
+        }
+
+        return [
+            'success' => false,
+            'message' => $error_message
+        ];
+    }
+
+    /**
+     * ═══════════════════════════════════════════════════════
+     * DEACTIVATE LICENSE WITH API
+     * ═══════════════════════════════════════════════════════
+     */
+    private static function deactivate_license_with_api($license_key, $domain) {
+        $api_url = self::LICENSE_API_BASE . '/licenses/deactivate';
+
+        $request_body = [
+            'key' => $license_key,
+            'domain' => $domain
+        ];
+
+        error_log('AAB License API: Deactivating...');
+        error_log('AAB License API: URL: ' . $api_url);
+
+        $response = wp_remote_post($api_url, [
+            'timeout' => 30,
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json'
+            ],
+            'body' => json_encode($request_body)
+        ]);
+
+        if (is_wp_error($response)) {
+            error_log('AAB License API: Deactivation failed: ' . $response->get_error_message());
+            return false;
+        }
+
+        $status_code = wp_remote_retrieve_response_code($response);
+        error_log('AAB License API: Deactivation response: ' . $status_code);
+
+        return $status_code === 200;
+    }
+
+    /**
+     * ═══════════════════════════════════════════════════════
+     * GET SITE DOMAIN
+     * ═══════════════════════════════════════════════════════
+     */
+    private static function get_site_domain() {
+        $site_url = get_site_url();
+        $parsed = parse_url($site_url);
+        $domain = isset($parsed['host']) ? $parsed['host'] : '';
+        
+        // Remove www. prefix
+        $domain = preg_replace('/^www\./', '', $domain);
+        
+        error_log('AAB License: Detected domain: ' . $domain . ' (from: ' . $site_url . ')');
+        
+        return $domain;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // SETTINGS REGISTRATION (unchanged)
+    // ═══════════════════════════════════════════════════════
+
     public static function register() {
-        // Provider selection
         register_setting('aab_settings', 'aab_ai_provider', [
             'sanitize_callback' => 'sanitize_text_field',
             'default' => 'openai',
         ]);
 
-        // API Keys - SEPARATE options for each provider
        register_setting('aab_settings', 'aab_openai_key', [
             'sanitize_callback' => [self::class, 'preserve_openai_key'],
             'default' => '',
@@ -35,7 +271,6 @@ class Settings {
             'default' => '',
         ]);
 
-        // Model selections - one for each provider
         register_setting('aab_settings', 'aab_openai_model', [
             'sanitize_callback' => 'sanitize_text_field',
             'default' => 'gpt-4o',
@@ -51,7 +286,6 @@ class Settings {
             'default' => 'gemini-2.5-flash',
         ]);
 
-        // Custom model fields
         register_setting('aab_settings', 'aab_openai_custom_model', [
             'sanitize_callback' => 'sanitize_text_field',
             'default' => '',
@@ -67,7 +301,6 @@ class Settings {
             'default' => '',
         ]);
 
-        // Backward compatibility
         register_setting('aab_settings', 'aab_api_key', [
             'sanitize_callback' => 'sanitize_text_field',
             'default' => '',
@@ -136,7 +369,6 @@ class Settings {
     }
 
     public static function api_keys_and_model_field() {
-        // Get saved values
         $openai_key = get_option('aab_openai_key', '');
         $claude_key = get_option('aab_claude_key', '');
         $gemini_key = get_option('aab_gemini_key', '');
@@ -149,32 +381,21 @@ class Settings {
         $claude_custom = get_option('aab_claude_custom_model', '');
         $gemini_custom = get_option('aab_gemini_custom_model', '');
 
-        // Define ALL models for each provider
        $openai_models = [
-            // Latest GPT-5.2
             'gpt-5.2' => 'GPT-5.2',
             'gpt-5.2-pro' => 'GPT-5.2 Pro',
             'gpt-5.2-chat-latest' => 'GPT-5.2 Chat Latest',
             'gpt-5.2-codex' => 'GPT-5.2 Codex',
-
-            // GPT-5.1 Family
             'gpt-5.1' => 'GPT-5.1',
             'gpt-5.1-chat-latest' => 'GPT-5.1 Chat Latest',
             'gpt-5.1-pro' => 'GPT-5.1 Pro',
-
-            // Legacy GPT-5 (if needed)
             'gpt-5' => 'GPT-5 (Legacy)',
-
-            // Still include best GPT-4.1 and reasoning (optional)
             'gpt-4.1' => 'GPT-4.1',
             'gpt-4.1-mini' => 'GPT-4.1 Mini',
             'gpt-4o' => 'GPT-4o',
             'gpt-4o-mini' => 'GPT-4o Mini',
-
-            // Budget models
             'gpt-3.5-turbo' => 'GPT-3.5 Turbo',
         ];
-
 
         $claude_models = [
             'claude-opus-4-20250514' => 'Claude Opus 4 (May 2025)',
@@ -222,9 +443,6 @@ class Settings {
         
         <div class="aab-provider-configs">
             
-            <!-- ═══════════════════════════════════════════
-                 OPENAI CONFIG
-                 ═══════════════════════════════════════════ -->
             <div class="aab-provider-config" data-provider="openai" style="display:none;">
                 <div class="aab-config-section">
                     <label class="aab-config-label">OpenAI API Key</label>
@@ -265,7 +483,6 @@ class Settings {
                     </select>
                     <p class="description">Select OpenAI model or use custom</p>
                     
-                    <!-- Custom Model Input -->
                     <div id="aab-openai-custom-wrapper" style="<?php echo ($openai_model === 'custom' || !empty($openai_custom)) ? '' : 'display:none;'; ?> margin-top: 15px;">
                         <label class="aab-config-label">
                             <span class="dashicons dashicons-admin-tools" style="color: #8b5cf6;"></span>
@@ -282,9 +499,6 @@ class Settings {
                 </div>
             </div>
 
-            <!-- ═══════════════════════════════════════════
-                 CLAUDE CONFIG
-                 ═══════════════════════════════════════════ -->
             <div class="aab-provider-config" data-provider="claude" style="display:none;">
                 <div class="aab-config-section">
                     <label class="aab-config-label">Claude API Key</label>
@@ -325,7 +539,6 @@ class Settings {
                     </select>
                     <p class="description">Select Claude model or use custom</p>
                     
-                    <!-- Custom Model Input -->
                     <div id="aab-claude-custom-wrapper" style="<?php echo ($claude_model === 'custom' || !empty($claude_custom)) ? '' : 'display:none;'; ?> margin-top: 15px;">
                         <label class="aab-config-label">
                             <span class="dashicons dashicons-admin-tools" style="color: #8b5cf6;"></span>
@@ -342,9 +555,6 @@ class Settings {
                 </div>
             </div>
 
-            <!-- ═══════════════════════════════════════════
-                 GEMINI CONFIG
-                 ═══════════════════════════════════════════ -->
             <div class="aab-provider-config" data-provider="gemini" style="display:none;">
                 <div class="aab-config-section">
                     <label class="aab-config-label">Gemini API Key</label>
@@ -385,7 +595,6 @@ class Settings {
                     </select>
                     <p class="description">Select Gemini model or use custom</p>
                     
-                    <!-- Custom Model Input -->
                     <div id="aab-gemini-custom-wrapper" style="<?php echo ($gemini_model === 'custom' || !empty($gemini_custom)) ? '' : 'display:none;'; ?> margin-top: 15px;">
                         <label class="aab-config-label">
                             <span class="dashicons dashicons-admin-tools" style="color: #8b5cf6;"></span>
@@ -409,7 +618,6 @@ class Settings {
             const provider = document.getElementById('aab_ai_provider').value;
             console.log('AAB Settings: Switching to provider:', provider);
             
-            // Show/hide provider config sections
             document.querySelectorAll('.aab-provider-config').forEach(config => {
                 const configProvider = config.getAttribute('data-provider');
                 if (configProvider === provider) {
@@ -421,9 +629,7 @@ class Settings {
             });
         }
 
-        // Handle custom model toggle for all providers
         function setupCustomModelToggles() {
-            // OpenAI
             const openaiSelect = document.getElementById('aab-openai-model-select');
             const openaiCustom = document.getElementById('aab-openai-custom-wrapper');
             if (openaiSelect && openaiCustom) {
@@ -432,7 +638,6 @@ class Settings {
                 });
             }
 
-            // Claude
             const claudeSelect = document.getElementById('aab-claude-model-select');
             const claudeCustom = document.getElementById('aab-claude-custom-wrapper');
             if (claudeSelect && claudeCustom) {
@@ -441,7 +646,6 @@ class Settings {
                 });
             }
 
-            // Gemini
             const geminiSelect = document.getElementById('aab-gemini-model-select');
             const geminiCustom = document.getElementById('aab-gemini-custom-wrapper');
             if (geminiSelect && geminiCustom) {
@@ -451,7 +655,6 @@ class Settings {
             }
         }
 
-        // Run on page load
         document.addEventListener('DOMContentLoaded', function() {
             console.log('AAB Settings: Page loaded, initializing provider fields');
             aabToggleProviderFields();
@@ -571,7 +774,7 @@ class Settings {
 
         if ($provider === 'openai') {
             delete_option('aab_openai_key');
-            delete_option('aab_api_key'); // backward compatibility
+            delete_option('aab_api_key');
             $cleared = 'OpenAI';
         } elseif ($provider === 'claude') {
             delete_option('aab_claude_key');
@@ -595,60 +798,74 @@ class Settings {
             wp_die('Insufficient permissions');
         }
 
-        // Show notices
-        if (!empty($_GET['aab_cleared'])) {
-            $val = sanitize_text_field($_GET['aab_cleared']);
-            $which = esc_html($val);
-            echo '<div class="notice notice-success is-dismissible"><p>Removed saved API key: ' . $which . '</p></div>';
-        }
-
-        if (!empty($_GET['license_activated'])) {
-            echo '<div class="notice notice-success is-dismissible"><p><strong>Success!</strong> Your license has been activated.</p></div>';
-        }
-
-        if (!empty($_GET['license_deactivated'])) {
-            echo '<div class="notice notice-info is-dismissible"><p>Your license has been deactivated.</p></div>';
-        }
-
-        if (!empty($_GET['license_error'])) {
-            $error_type = sanitize_text_field($_GET['license_error']);
-            if ($error_type === 'empty') {
-                echo '<div class="notice notice-error is-dismissible"><p><strong>Error:</strong> Please enter a valid license key.</p></div>';
-            } elseif ($error_type === 'custom' && !empty($_GET['error_msg'])) {
-                $error_msg = sanitize_text_field($_GET['error_msg']);
-                echo '<div class="notice notice-error is-dismissible"><p><strong>Error:</strong> ' . esc_html($error_msg) . '</p></div>';
-            } else {
-                echo '<div class="notice notice-error is-dismissible"><p><strong>Error:</strong> An error occurred. Please try again.</p></div>';
-            }
-        }
-
-        // Get license info from database
         $license_key = get_option('aab_license_key', '');
+        $is_activated = get_option('aab_license_activated', '0') === '1';
         $license_purchased = get_option('aab_license_purchased', '');
-        
-        // Check if license is actually active
-        $is_activated = \AAB\Core\License::is_license_active();
-        
-        // If we have a saved key, get full info from database
-        if (!empty($license_key)) {
-            $license_info = \AAB\Core\License::get_license_info($license_key);
-            if ($license_info) {
-                $license_purchased = date('F jS, Y', strtotime($license_info['purchase_date']));
-                $is_activated = $license_info['is_activated'];
-            }
+        $license_activated_at = get_option('aab_license_activated_at', '');
+
+        if ($is_activated && !empty($license_activated_at)) {
+            $license_purchased = date('F jS, Y', strtotime($license_activated_at));
         }
 
-        // Get current provider
         $current_provider = get_option('aab_ai_provider', 'openai');
         ?>
 
         <div class="wrap aab-settings-wrap">
 
-            <h1>AI Auto Blog — Settings</h1>
+            <?php
+            // ═══════════════════════════════════════════════════════
+            // NOTICES - Must be INSIDE .wrap div, BEFORE <h1>
+            // ═══════════════════════════════════════════════════════
+            
+            // 🔒 LICENSE REQUIRED NOTICE - Big red warning at top
+            if (!empty($_GET['license_required'])): ?>
+                <div class="aab-license-required-notice" style="position: relative; z-index: 9999;">
+                    <div style="background: #fff; border: 4px solid #dc3545; padding: 25px 30px; margin: 20px 0 30px 0; border-radius: 8px; box-shadow: 0 4px 12px rgba(220, 53, 69, 0.2);">
+                        <h2 style="margin: 0 0 15px 0; color: #dc3545; font-size: 1.8rem; display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 2rem;">🔒</span>
+                            License Activation Required
+                        </h2>
+                        <p style="font-size: 1.1rem; margin: 0 0 10px 0; color: #333; line-height: 1.6;">
+                            <strong>You need to activate your license to access AutoContent AI features.</strong>
+                        </p>
+                        <p style="margin: 0; color: #666; font-size: 1rem; line-height: 1.5;">
+                            Please enter your license key in the form below to unlock all features and start creating content.
+                        </p>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($_GET['aab_cleared'])): 
+                $val = sanitize_text_field($_GET['aab_cleared']);
+                $which = esc_html($val);
+            ?>
+                <div class="notice notice-success is-dismissible"><p>Removed saved API key: <?php echo $which; ?></p></div>
+            <?php endif; ?>
+
+            <?php if (!empty($_GET['license_activated'])): ?>
+                <div class="notice notice-success is-dismissible"><p><strong>Success!</strong> Your license has been activated.</p></div>
+            <?php endif; ?>
+
+            <?php if (!empty($_GET['license_deactivated'])): ?>
+                <div class="notice notice-info is-dismissible"><p>Your license has been deactivated.</p></div>
+            <?php endif; ?>
+
+            <?php if (!empty($_GET['license_error'])): 
+                $error_type = sanitize_text_field($_GET['license_error']);
+                if ($error_type === 'empty'): ?>
+                    <div class="notice notice-error is-dismissible"><p><strong>Error:</strong> Please enter a valid license key.</p></div>
+                <?php elseif ($error_type === 'custom' && !empty($_GET['error_msg'])): 
+                    $error_msg = sanitize_text_field($_GET['error_msg']); ?>
+                    <div class="notice notice-error is-dismissible"><p><strong>Error:</strong> <?php echo esc_html($error_msg); ?></p></div>
+                <?php else: ?>
+                    <div class="notice notice-error is-dismissible"><p><strong>Error:</strong> An error occurred. Please try again.</p></div>
+                <?php endif; ?>
+            <?php endif; ?>
+
+            <h1>AutoContent AI — Settings</h1>
 
             <div class="aab-settings-grid-single">
 
-                <!-- Main Settings Card (Full Width) -->
                 <div class="aab-settings-card">
                     <div class="aab-card-header">
                         <h2>AI Provider Configuration</h2>
@@ -672,18 +889,16 @@ class Settings {
 
             </div>
 
-            <!-- License Section (Full Width at Bottom) -->
             <div class="aab-license-section">
                 <div class="aab-settings-card aab-license-card">
                     <div class="aab-card-header">
                         <h2>
                             <span class="dashicons dashicons-admin-network"></span>
-                            AI Auto Blog License
+                            AutoContent AI License
                         </h2>
                     </div>
 
                     <?php if ($is_activated): ?>
-                        <!-- LICENSE ACTIVATED - Show Details -->
                         <div class="aab-license-content">
                             <div class="aab-license-status-badge aab-license-active">
                                 <span class="dashicons dashicons-yes-alt"></span>
@@ -704,7 +919,7 @@ class Settings {
                                             <span class="dashicons dashicons-calendar-alt"></span>
                                         </span>
                                         <div>
-                                            <div class="aab-license-info-label">Purchased On</div>
+                                            <div class="aab-license-info-label">Activated On</div>
                                             <div class="aab-license-info-value"><?php echo esc_html($license_purchased); ?></div>
                                         </div>
                                     </div>
@@ -731,7 +946,6 @@ class Settings {
                         </div>
 
                     <?php else: ?>
-                        <!-- LICENSE NOT ACTIVATED - Show Activation Form -->
                         <div class="aab-license-content">
                             <div class="aab-license-status-badge aab-license-inactive">
                                 <span class="dashicons dashicons-warning"></span>
@@ -739,10 +953,10 @@ class Settings {
                             </div>
 
                             <div class="aab-license-not-activated-msg">
-                                Please activate your license to unlock all features of AI Auto Blog.
+                                Please activate your license to unlock all features of AutoContent AI.
                             </div>
 
-                            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="aab-license-activate-form">
+                            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="aab-license-activate-form" id="aab-license-form">
                                 <?php wp_nonce_field('aab_activate_license'); ?>
                                 <input type="hidden" name="action" value="aab_activate_license">
 
@@ -753,10 +967,19 @@ class Settings {
                                            class="aab-license-input" 
                                            placeholder="Enter your license key (e.g., XXXX-XXXX-XXXX-XXXX)"
                                            required>
-                                    <button type="submit" class="aab-activate-btn">
+                                    <button type="submit" class="aab-activate-btn" id="aab-activate-btn">
                                         <span class="dashicons dashicons-unlock"></span>
-                                        Activate License
+                                        <span class="btn-text">Activate License</span>
+                                        <span class="btn-loading" style="display:none;">
+                                            <span class="dashicons dashicons-update spin"></span>
+                                            Verifying...
+                                        </span>
                                     </button>
+                                </div>
+                                
+                                <div id="aab-license-hint" class="aab-license-hint" style="display:none;">
+                                    <span class="dashicons dashicons-info"></span>
+                                    Verifying license with server...
                                 </div>
                             </form>
                         </div>
@@ -768,10 +991,6 @@ class Settings {
         </div>
 
         <style>
-        /* ────────────────────────────────────────────────
-           Modern Settings Page
-           ──────────────────────────────────────────────── */
-
         .aab-settings-wrap {
             max-width: 1100px;
             margin: 40px auto;
@@ -896,10 +1115,6 @@ class Settings {
             width: 18px;
             height: 18px;
         }
-
-        /* ────────────────────────────────────────────────
-           LICENSE SECTION
-           ──────────────────────────────────────────────── */
 
         .aab-license-section {
             margin-top: 40px;
@@ -1046,7 +1261,6 @@ class Settings {
             height: 18px;
         }
 
-        /* License Activation Form */
         .aab-license-activate-form {
             max-width: 700px;
         }
@@ -1100,7 +1314,41 @@ class Settings {
             height: 18px;
         }
 
-        /* Responsive */
+        .spin {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .aab-license-hint {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 6px;
+            color: #1e40af;
+            font-size: 0.9rem;
+            margin-top: 12px;
+        }
+        
+        .aab-license-hint .dashicons {
+            font-size: 18px;
+            width: 18px;
+            height: 18px;
+        }
+        
+        .aab-activate-btn .btn-text,
+        .aab-activate-btn .btn-loading {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
         @media (max-width: 768px) {
             .aab-card-header {
                 padding: 20px 24px;
@@ -1135,7 +1383,24 @@ class Settings {
 
         <script>
         (function () {
-            // Auto-dismiss notices after 5 seconds
+            const form = document.getElementById('aab-license-form');
+            const btn = document.getElementById('aab-activate-btn');
+            const hint = document.getElementById('aab-license-hint');
+            
+            if (form && btn) {
+                form.addEventListener('submit', function() {
+                    const btnText = btn.querySelector('.btn-text');
+                    const btnLoading = btn.querySelector('.btn-loading');
+                    
+                    if (btnText && btnLoading && hint) {
+                        btnText.style.display = 'none';
+                        btnLoading.style.display = 'flex';
+                        hint.style.display = 'flex';
+                        btn.disabled = true;
+                    }
+                });
+            }
+            
             setTimeout(function() {
                 const notices = document.querySelectorAll('.notice.is-dismissible');
                 notices.forEach(function(notice) {

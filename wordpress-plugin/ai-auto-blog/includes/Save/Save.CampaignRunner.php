@@ -561,7 +561,7 @@ EOT;
 
         if ($provider === 'openrouter') {
             $headers['Referer'] = home_url();
-            $headers['X-Title'] = 'AI Auto Blog';
+            $headers['X-Title'] = 'AutoContent AI';
         }
 
         $response = wp_remote_post($endpoint_to_call, [

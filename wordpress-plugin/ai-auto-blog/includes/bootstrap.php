@@ -26,6 +26,7 @@ require_once AAB_PATH . 'includes/Extensions/ImageIntegration.php';
 require_once AAB_PATH . 'includes/Extensions/CampaignResume.php';
 require_once AAB_PATH . 'includes/Extensions/SEO.php'; // ← SEO MODULE ADDED
 require_once AAB_PATH . 'includes/Extensions/SEOStats.php'; // ← SEO STATS MODULE
+require_once AAB_PATH . 'includes/Extensions/SEOContentOptimizer.php'; // ← SEO CONTENT OPTIMIZER
 
 
 // Register CPT on init

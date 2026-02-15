@@ -1,4 +1,4 @@
-=== AI Auto Blog ===
+=== AutoContent AI ===
 Contributors: Hateem
 Tags: ai, content generation, autoblog, seo, openai, automation
 Requires at least: 6.0
@@ -11,7 +11,7 @@ Automatically generate SEO-optimized blog posts using AI with full campaign cont
 
 == Description ==
 
-AI Auto Blog is an advanced campaign-based content generation plugin for WordPress.
+AutoContent AI is an advanced campaign-based content generation plugin for WordPress.
 
 It allows you to:
 - Create AI-powered content campaigns

@@ -13,11 +13,10 @@ class License {
      * Initialize License System
      */
     public static function init() {
+        // These handlers are now in Settings.php (using API)
+        // Keeping them here for backward compatibility
         add_action('admin_post_aab_activate_license', [self::class, 'handle_activate_license']);
         add_action('admin_post_aab_deactivate_license', [self::class, 'handle_deactivate_license']);
-        
-        // Create table on plugin activation
-        // register_activation_hook(AAB_FILE, [self::class, 'create_table']);
     }
 
     /**
@@ -43,6 +42,36 @@ class License {
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
     }
+
+    /**
+     * ═══════════════════════════════════════════════════════
+     * CHECK IF LICENSE IS ACTIVE
+     * ═══════════════════════════════════════════════════════
+     * 
+     * SIMPLIFIED VERSION: Checks WordPress options
+     * This matches what Settings.php saves after API verification
+     * 
+     * Returns TRUE if:
+     * - aab_license_activated option is set to '1' (string)
+     */
+    public static function is_license_active() {
+        $activated = get_option('aab_license_activated', '0');
+        
+        // MUST be exactly '1' as a string
+        $is_active = ($activated === '1');
+        
+        // Debug logging
+        error_log('AAB License Check: aab_license_activated = "' . $activated . '" (type: ' . gettype($activated) . ')');
+        error_log('AAB License Check: is_active = ' . ($is_active ? 'TRUE' : 'FALSE'));
+        
+        return $is_active;
+    }
+
+    /**
+     * ═══════════════════════════════════════════════════════
+     * LEGACY METHODS (for database table - kept for reference)
+     * ═══════════════════════════════════════════════════════
+     */
 
     /**
      * Generate Random 16-Character License Key
@@ -252,27 +281,6 @@ class License {
     }
 
     /**
-     * Check if License is Activated on Current Domain
-     */
-    public static function is_license_active() {
-        $saved_key = get_option('aab_license_key', '');
-        
-        if (empty($saved_key)) {
-            return false;
-        }
-        
-        $license = self::verify_license($saved_key);
-        
-        if (!$license) {
-            return false;
-        }
-        
-        $current_domain = self::get_current_domain();
-        
-        return ($license->is_activated && $license->activated_domain === $current_domain);
-    }
-
-    /**
      * Get Current Domain
      */
     private static function get_current_domain() {
@@ -281,6 +289,8 @@ class License {
 
     /**
      * Handle License Activation (POST Handler)
+     * NOTE: Settings.php now handles this via API
+     * Keeping for backward compatibility
      */
     public static function handle_activate_license() {
         if (!current_user_can('manage_options')) {
@@ -312,6 +322,8 @@ class License {
 
     /**
      * Handle License Deactivation (POST Handler)
+     * NOTE: Settings.php now handles this via API
+     * Keeping for backward compatibility
      */
     public static function handle_deactivate_license() {
         if (!current_user_can('manage_options')) {

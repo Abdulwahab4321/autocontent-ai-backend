@@ -1042,7 +1042,7 @@ EOT;
 
             $headers['Authorization'] = 'Bearer ' . $api_key;
             $headers['Referer'] = home_url();
-            $headers['X-Title'] = 'AI Auto Blog';
+            $headers['X-Title'] = 'AutoContent AI';
             
             error_log('AAB DEBUG: OpenRouter - Headers set');
         }

@@ -73,7 +73,7 @@ $seo_stats = \AAB\Extensions\SEOStats::get_stats();
     <div class="aab-dashboard-header">
         <h1 class="aab-dashboard-title">
             <span class="dashicons dashicons-megaphone"></span>
-            AI Auto Blog Dashboard
+            AutoContent AI Dashboard
         </h1>
         <p class="aab-dashboard-subtitle">Manage your AI-powered content campaigns</p>
     </div>
@@ -508,7 +508,7 @@ $seo_stats = \AAB\Extensions\SEOStats::get_stats();
     <div class="aab-help-section">
         <div class="aab-help-card">
             <h3><span class="dashicons dashicons-book"></span> Documentation</h3>
-            <p>Learn how to get the most out of AI Auto Blog</p>
+            <p>Learn how to get the most out of AutoContent AI</p>
             <a href="#" class="aab-fancy-btn aab-btn-docs" target="_blank">
                 <span class="dashicons dashicons-book-alt"></span>
                 View Docs

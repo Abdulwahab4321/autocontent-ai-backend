@@ -175,7 +175,7 @@ class Settings {
         }
         ?>
         <div class="wrap">
-            <h1>AI Auto Blog — Settings</h1>
+            <h1>AutoContent AI — Settings</h1>
 
             <form method="post" action="options.php">
                 <?php
