@@ -99,6 +99,50 @@ router.post("/verify", async (req, res) => {
   }
 });
 
+/**
+ * POST /api/licenses/check – plugin check only (no bind, no state change).
+ * Body: { key, domain }. Returns { valid: true } only if license is active and bound to this domain.
+ * If license.domain is null (disconnected from dashboard), returns valid: false so plugin can clear local state.
+ */
+router.post("/check", async (req, res) => {
+  try {
+    const { key, domain } = req.body || {};
+    const keyStr = key != null && typeof key === "string" ? key.trim() : "";
+    if (!keyStr) {
+      return res.status(400).json({ valid: false, message: "License key is required" });
+    }
+    const requestedDomain = normalizeDomain(domain);
+    if (requestedDomain == null || requestedDomain === "") {
+      return res.status(400).json({ valid: false, message: "Domain is required" });
+    }
+
+    const license = await License.findOne({ key: keyStr });
+    if (!license) {
+      return res.status(404).json({ valid: false, message: "Invalid or inactive license key" });
+    }
+    if (license.status === "revoked") {
+      return res.json({ valid: false, message: "License has been revoked" });
+    }
+    if (license.status !== "active") {
+      return res.json({ valid: false, message: "License is not active" });
+    }
+
+    const currentDomain = license.domain ? normalizeDomain(license.domain) : null;
+    if (currentDomain === null) {
+      return res.json({ valid: false, message: "License is not active on this domain." });
+    }
+    if (currentDomain !== requestedDomain) {
+      return res.json({ valid: false, message: "License is active on another website." });
+    }
+    return res.json({
+      valid: true,
+      product: license.product || "wordpress-plugin",
+    });
+  } catch (err) {
+    return res.status(500).json({ valid: false, message: err.message || "Check failed" });
+  }
+});
+
 /** POST /api/licenses/:id/disconnect – user disconnects license from current domain so it can be used on another site. */
 router.post("/:id/disconnect", auth, async (req, res) => {
   try {
