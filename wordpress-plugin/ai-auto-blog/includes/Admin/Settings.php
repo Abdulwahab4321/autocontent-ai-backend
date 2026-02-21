@@ -10,15 +10,257 @@ class Settings {
     // ═══════════════════════════════════════════════════════
     // LICENSE API CONFIGURATION
     // ═══════════════════════════════════════════════════════
-    const LICENSE_API_BASE = 'https://backend.autocontentai.co/api'; // ✅ No trailing slash
+    const LICENSE_API_BASE = 'https://backend.autocontentai.co/api';
 
     public static function init() {
+        error_log('AAB License: Settings::init() called');
+        
         add_action('admin_init', [self::class, 'register']);
         add_action('admin_post_aab_clear_single_key', [self::class, 'handle_clear_single_key']);
         
         // License activation/deactivation handlers
         add_action('admin_post_aab_activate_license', [self::class, 'handle_activate_license']);
         add_action('admin_post_aab_deactivate_license', [self::class, 'handle_deactivate_license']);
+
+        // ═══════════════════════════════════════════════════════
+        // MANUAL TEST TRIGGER (for debugging)
+        // ═══════════════════════════════════════════════════════
+        add_action('admin_post_aab_test_license_check', [self::class, 'test_license_check']);
+
+        // ═══════════════════════════════════════════════════════
+        // Register custom cron interval FIRST (must be early)
+        // ═══════════════════════════════════════════════════════
+        add_filter('cron_schedules', [self::class, 'add_cron_interval']);
+
+        // ═══════════════════════════════════════════════════════
+        // AUTOMATIC LICENSE VERIFICATION (Every 5 minutes)
+        // ═══════════════════════════════════════════════════════
+        add_action('aab_verify_license_cron', [self::class, 'verify_license_background']);
+        
+        // Schedule the cron job on init
+        add_action('init', [self::class, 'setup_cron_job']);
+    }
+
+    /**
+     * ═══════════════════════════════════════════════════════
+     * SETUP CRON JOB (Runs on every page load to ensure scheduled)
+     * ═══════════════════════════════════════════════════════
+     */
+    public static function setup_cron_job() {
+        error_log('AAB License: setup_cron_job() called');
+        
+        $next_run = wp_next_scheduled('aab_verify_license_cron');
+        
+        if (!$next_run) {
+            error_log('AAB License: No cron scheduled - scheduling now');
+            $scheduled = wp_schedule_event(time(), 'aab_every_5_minutes', 'aab_verify_license_cron');
+            
+            if ($scheduled === false) {
+                error_log('AAB License: ❌ FAILED to schedule cron job!');
+            } else {
+                error_log('AAB License: ✅ Cron job scheduled successfully');
+                $next_run = wp_next_scheduled('aab_verify_license_cron');
+                error_log('AAB License: Next run: ' . date('Y-m-d H:i:s', $next_run));
+            }
+        } else {
+            error_log('AAB License: Cron already scheduled - next run: ' . date('Y-m-d H:i:s', $next_run));
+        }
+        
+        // Log all scheduled cron jobs for debugging
+        $crons = _get_cron_array();
+        $aab_crons = [];
+        foreach ($crons as $timestamp => $cron) {
+            if (isset($cron['aab_verify_license_cron'])) {
+                $aab_crons[] = date('Y-m-d H:i:s', $timestamp);
+            }
+        }
+        if (!empty($aab_crons)) {
+            error_log('AAB License: All AAB cron schedules: ' . implode(', ', $aab_crons));
+        }
+    }
+
+    /**
+     * ═══════════════════════════════════════════════════════
+     * ADD CUSTOM 5-MINUTE CRON INTERVAL
+     * ═══════════════════════════════════════════════════════
+     */
+    public static function add_cron_interval($schedules) {
+        error_log('AAB License: add_cron_interval() called');
+        error_log('AAB License: Existing schedules: ' . implode(', ', array_keys($schedules)));
+        
+        $schedules['aab_every_5_minutes'] = [
+            'interval' => 300, // 5 minutes in seconds
+            'display'  => __('Every 5 Minutes (AAB License Check)')
+        ];
+        
+        error_log('AAB License: ✅ Added aab_every_5_minutes schedule (300 seconds)');
+        
+        return $schedules;
+    }
+
+    /**
+     * ═══════════════════════════════════════════════════════
+     * MANUAL TEST TRIGGER (Access via: /wp-admin/admin-post.php?action=aab_test_license_check)
+     * ═══════════════════════════════════════════════════════
+     */
+    public static function test_license_check() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        error_log('═══════════════════════════════════════════════════════');
+        error_log('AAB License: MANUAL TEST TRIGGERED');
+        error_log('═══════════════════════════════════════════════════════');
+
+        self::verify_license_background();
+
+        wp_redirect(admin_url('admin.php?page=aab-settings&test_run=1'));
+        exit;
+    }
+
+    /**
+     * ═══════════════════════════════════════════════════════
+     * BACKGROUND LICENSE VERIFICATION (Runs every 5 minutes)
+     * ═══════════════════════════════════════════════════════
+     */
+    public static function verify_license_background() {
+        error_log('═══════════════════════════════════════════════════════');
+        error_log('AAB License: verify_license_background() STARTED');
+        error_log('AAB License: Timestamp: ' . date('Y-m-d H:i:s'));
+        error_log('═══════════════════════════════════════════════════════');
+        
+        // Check if license is currently activated
+        $is_activated = get_option('aab_license_activated', '0');
+        error_log('AAB License: aab_license_activated option value: "' . $is_activated . '"');
+        
+        if ($is_activated !== '1') {
+            error_log('AAB License: No active license (value is not "1") - skipping verification');
+            error_log('═══════════════════════════════════════════════════════');
+            return;
+        }
+
+        error_log('AAB License: ✅ Active license detected - proceeding with verification');
+
+        $license_key = get_option('aab_license_key', '');
+        error_log('AAB License: License key exists: ' . (!empty($license_key) ? 'YES' : 'NO'));
+        
+        if (empty($license_key)) {
+            error_log('AAB License: ❌ No license key found - skipping verification');
+            error_log('═══════════════════════════════════════════════════════');
+            return;
+        }
+
+        $site_domain = self::get_site_domain();
+        error_log('AAB License: Site domain: ' . $site_domain);
+        error_log('AAB License: Key preview: ' . substr($license_key, 0, 10) . '...' . substr($license_key, -4));
+
+        // Call the license check API
+        $api_url = self::LICENSE_API_BASE . '/licenses/check';
+        
+        $request_body = [
+            'key'    => $license_key,
+            'domain' => $site_domain
+        ];
+
+        error_log('AAB License: Calling API: ' . $api_url);
+        error_log('AAB License: Request payload: ' . json_encode($request_body));
+
+        $start_time = microtime(true);
+
+        $response = wp_remote_post($api_url, [
+            'timeout' => 30,
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'Accept'       => 'application/json'
+            ],
+            'body' => json_encode($request_body)
+        ]);
+
+        $end_time = microtime(true);
+        $duration = round($end_time - $start_time, 2);
+        error_log('AAB License: API call took ' . $duration . ' seconds');
+
+        // Handle connection errors
+        if (is_wp_error($response)) {
+            $error_message = $response->get_error_message();
+            $error_code = $response->get_error_code();
+            error_log('AAB License: ❌ WP_Error occurred');
+            error_log('AAB License: Error code: ' . $error_code);
+            error_log('AAB License: Error message: ' . $error_message);
+            error_log('AAB License: Keeping license active (connection failed)');
+            error_log('═══════════════════════════════════════════════════════');
+            return;
+        }
+
+        $status_code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+
+        error_log('AAB License: HTTP status code: ' . $status_code);
+        error_log('AAB License: Response body length: ' . strlen($body) . ' bytes');
+        error_log('AAB License: Response body: ' . $body);
+
+        // Parse response
+        $data = json_decode($body, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log('AAB License: ❌ JSON decode failed: ' . json_last_error_msg());
+            error_log('AAB License: Keeping license active (invalid JSON)');
+            error_log('═══════════════════════════════════════════════════════');
+            return;
+        }
+
+        error_log('AAB License: JSON decoded successfully');
+        error_log('AAB License: Response data keys: ' . implode(', ', array_keys($data)));
+
+        // ✅ Check if license is valid
+        $valid_field = isset($data['valid']) ? $data['valid'] : null;
+        error_log('AAB License: "valid" field value: ' . var_export($valid_field, true));
+        error_log('AAB License: "valid" field type: ' . gettype($valid_field));
+
+        if ($status_code === 200 && !empty($data['valid']) && $data['valid'] === true) {
+            error_log('AAB License: ✅ License is VALID - keeping active');
+            error_log('═══════════════════════════════════════════════════════');
+            return;
+        }
+
+        // ❌ License is INVALID - Deactivate automatically
+        error_log('AAB License: ❌ License is INVALID - AUTO-DEACTIVATING');
+        error_log('AAB License: Status code: ' . $status_code);
+        error_log('AAB License: Valid field: ' . var_export($valid_field, true));
+        
+        // Get reason if provided
+        $reason = 'License verification failed';
+        if (!empty($data['message'])) {
+            $reason = $data['message'];
+            error_log('AAB License: Reason from message field: ' . $reason);
+        } elseif (!empty($data['error'])) {
+            $reason = $data['error'];
+            error_log('AAB License: Reason from error field: ' . $reason);
+        } elseif (isset($data['valid']) && $data['valid'] === false) {
+            $reason = 'License no longer valid';
+            error_log('AAB License: Reason: valid=false');
+        }
+
+        error_log('AAB License: Final deactivation reason: ' . $reason);
+
+        // Delete all license data
+        error_log('AAB License: Deleting license options...');
+        delete_option('aab_license_key');
+        delete_option('aab_license_activated');
+        delete_option('aab_license_domain');
+        delete_option('aab_license_activated_at');
+        delete_option('aab_license_purchased');
+        delete_option('aab_license_email');
+        delete_option('aab_license_type');
+        error_log('AAB License: ✅ License options deleted');
+
+        // Store deactivation reason for admin notice
+        update_option('aab_license_auto_deactivated', current_time('mysql'));
+        update_option('aab_license_deactivation_reason', $reason);
+        error_log('AAB License: ✅ Deactivation timestamp and reason stored');
+
+        error_log('AAB License: ✅ License auto-deactivated successfully');
+        error_log('═══════════════════════════════════════════════════════');
     }
 
     public static function handle_activate_license() {
@@ -47,7 +289,6 @@ class Settings {
         $api_response = self::verify_license_with_api($license_key, $site_domain);
 
         if ($api_response['success']) {
-            // ✅ API returned 200 - License is valid
             error_log('AAB License: ✅ Activation SUCCESS - Saving data');
             
             update_option('aab_license_key', $license_key);
@@ -55,7 +296,10 @@ class Settings {
             update_option('aab_license_domain', $site_domain);
             update_option('aab_license_activated_at', current_time('mysql'));
             
-            // Save additional data if API provides it
+            // Clear any auto-deactivation notices
+            delete_option('aab_license_auto_deactivated');
+            delete_option('aab_license_deactivation_reason');
+            
             if (!empty($api_response['data']['purchase_date'])) {
                 update_option('aab_license_purchased', $api_response['data']['purchase_date']);
             }
@@ -69,7 +313,6 @@ class Settings {
             wp_redirect(admin_url('admin.php?page=aab-settings&license_activated=1'));
             exit;
         } else {
-            // ❌ API did not return 200 - License is invalid
             error_log('AAB License: ❌ Activation FAILED: ' . $api_response['message']);
             
             $error_message = !empty($api_response['message']) ? $api_response['message'] : 'License verification failed';
@@ -91,7 +334,7 @@ class Settings {
         $site_domain = self::get_site_domain();
 
         error_log('═══════════════════════════════════════════════════════');
-        error_log('AAB License: Starting deactivation...');
+        error_log('AAB License: Starting manual deactivation...');
         
         if (!empty($license_key)) {
             self::deactivate_license_with_api($license_key, $site_domain);
@@ -105,8 +348,10 @@ class Settings {
         delete_option('aab_license_purchased');
         delete_option('aab_license_email');
         delete_option('aab_license_type');
+        delete_option('aab_license_auto_deactivated');
+        delete_option('aab_license_deactivation_reason');
 
-        error_log('AAB License: ✅ Deactivation complete');
+        error_log('AAB License: ✅ Manual deactivation complete');
         error_log('═══════════════════════════════════════════════════════');
 
         wp_redirect(admin_url('admin.php?page=aab-settings&license_deactivated=1'));
@@ -115,18 +360,12 @@ class Settings {
 
     /**
      * ═══════════════════════════════════════════════════════
-     * VERIFY LICENSE WITH API
+     * VERIFY LICENSE WITH API (Used during activation)
      * ═══════════════════════════════════════════════════════
-     * 
-     * Simplified version:
-     * - Only checks for 200 status code
-     * - All validation happens on API side
-     * - Returns success or error message
      */
     private static function verify_license_with_api($license_key, $domain) {
         $api_url = self::LICENSE_API_BASE . '/licenses/verify';
 
-        // ✅ Exact request format as specified
         $request_body = [
             'key' => $license_key,
             'domain' => $domain
@@ -144,7 +383,6 @@ class Settings {
             'body' => json_encode($request_body)
         ]);
 
-        // Handle connection errors
         if (is_wp_error($response)) {
             error_log('AAB License API: ❌ Connection error: ' . $response->get_error_message());
             return [
@@ -159,24 +397,17 @@ class Settings {
         error_log('AAB License API: Response code: ' . $status_code);
         error_log('AAB License API: Response body: ' . $body);
 
-        // ✅ SIMPLIFIED: Only check for 200 status
-        // All validation happens on API side
         if ($status_code === 200) {
             error_log('AAB License API: ✅ Status 200 - License VALID');
-            
-            // Try to parse response for additional data (optional)
             $data = json_decode($body, true);
-            
             return [
                 'success' => true,
                 'data' => $data ?: []
             ];
         }
 
-        // ❌ Not 200 = Invalid license
         error_log('AAB License API: ❌ Status ' . $status_code . ' - License INVALID');
         
-        // Try to get error message from API response
         $data = json_decode($body, true);
         $error_message = 'License verification failed';
         
@@ -237,12 +468,8 @@ class Settings {
         $site_url = get_site_url();
         $parsed = parse_url($site_url);
         $domain = isset($parsed['host']) ? $parsed['host'] : '';
-        
-        // Remove www. prefix
         $domain = preg_replace('/^www\./', '', $domain);
-        
         error_log('AAB License: Detected domain: ' . $domain . ' (from: ' . $site_url . ')');
-        
         return $domain;
     }
 
@@ -803,21 +1030,49 @@ class Settings {
         $license_purchased = get_option('aab_license_purchased', '');
         $license_activated_at = get_option('aab_license_activated_at', '');
 
+        // Check if license was auto-deactivated
+        $auto_deactivated = get_option('aab_license_auto_deactivated', '');
+        $deactivation_reason = get_option('aab_license_deactivation_reason', '');
+
         if ($is_activated && !empty($license_activated_at)) {
             $license_purchased = date('F jS, Y', strtotime($license_activated_at));
         }
 
         $current_provider = get_option('aab_ai_provider', 'openai');
+        
+        // Get next cron run time
+        $next_cron = wp_next_scheduled('aab_verify_license_cron');
+        $next_cron_display = $next_cron ? date('Y-m-d H:i:s', $next_cron) : 'Not scheduled';
         ?>
 
         <div class="wrap aab-settings-wrap">
 
             <?php
-            // ═══════════════════════════════════════════════════════
-            // NOTICES - Must be INSIDE .wrap div, BEFORE <h1>
-            // ═══════════════════════════════════════════════════════
+            // TEST RUN NOTICE
+            if (!empty($_GET['test_run'])): ?>
+                <div class="notice notice-info is-dismissible">
+                    <p><strong>✅ Manual license check triggered!</strong> Check your error logs for detailed results.</p>
+                </div>
+            <?php endif; ?>
+
+            <?php
+            // AUTO-DEACTIVATION NOTICE
+            if (!empty($auto_deactivated) && !empty($deactivation_reason)): ?>
+                <div class="notice notice-error is-dismissible" style="border-left: 4px solid #dc3545;">
+                    <p style="font-size: 1.1rem;">
+                        <strong>⚠️ License Auto-Deactivated</strong><br>
+                        Your license was automatically deactivated on <?php echo esc_html(date('F jS, Y \a\t g:i A', strtotime($auto_deactivated))); ?>.
+                    </p>
+                    <p><strong>Reason:</strong> <?php echo esc_html($deactivation_reason); ?></p>
+                    <p>Please re-activate your license below or contact support if you believe this was an error.</p>
+                </div>
+                <?php
+                delete_option('aab_license_auto_deactivated');
+                delete_option('aab_license_deactivation_reason');
+            endif;
+            ?>
             
-            // 🔒 LICENSE REQUIRED NOTICE - Big red warning at top
+            <?php
             if (!empty($_GET['license_required'])): ?>
                 <div class="aab-license-required-notice" style="position: relative; z-index: 9999;">
                     <div style="background: #fff; border: 4px solid #dc3545; padding: 25px 30px; margin: 20px 0 30px 0; border-radius: 8px; box-shadow: 0 4px 12px rgba(220, 53, 69, 0.2);">
@@ -896,6 +1151,10 @@ class Settings {
                             <span class="dashicons dashicons-admin-network"></span>
                             AutoContent AI License
                         </h2>
+                        <!-- <p class="aab-card-subtitle">
+                            Auto-verification every 5 minutes • Next check: <?php echo esc_html($next_cron_display); ?>
+                            <a href="<?php echo esc_url(admin_url('admin-post.php?action=aab_test_license_check')); ?>" style="margin-left: 10px; color: #2563eb;">Test Now</a>
+                        </p> -->
                     </div>
 
                     <?php if ($is_activated): ?>

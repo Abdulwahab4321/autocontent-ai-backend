@@ -114,17 +114,32 @@ async function createStripeCheckoutSession({ successUrl, cancelUrl, userId, user
 }
 
 /**
+ * Get a single frontend base URL for redirects.
+ * FRONTEND_URL can be comma-separated (e.g. http://localhost:3000,https://autocontentai.co).
+ * Prefer https for production fallback.
+ */
+function getFrontendBaseUrl() {
+  const raw = (config.frontendUrl || "").trim();
+  if (!raw) return "http://localhost:3000";
+  const urls = raw.split(",").map((u) => u.trim()).filter(Boolean);
+  const https = urls.find((u) => u.startsWith("https://"));
+  return https || urls[0] || "http://localhost:3000";
+}
+
+/**
  * Normalize success/cancel URLs from request body or use defaults.
- * Frontend may send full URLs (e.g. https://site.com/dashboard?checkout=success).
+ * Frontend usually sends full URLs (successUrl/cancelUrl). If not, we use FRONTEND_URL.
+ * Note: Stripe Dashboard mein koi "frontend URL" setting nahi – yeh URL hum yahin se bhejte hain.
  */
 function getCheckoutUrls(body) {
-  const base = config.frontendUrl || "";
+  const base = getFrontendBaseUrl();
   return {
     successUrl:
       (body?.successUrl && String(body.successUrl).trim()) ||
-      `${base}/dashboard?checkout=success`,
+      `${base.replace(/\/$/, "")}/dashboard?checkout=success`,
     cancelUrl:
-      (body?.cancelUrl && String(body.cancelUrl).trim()) || `${base}/pricing`,
+      (body?.cancelUrl && String(body.cancelUrl).trim()) ||
+      `${base.replace(/\/$/, "")}/pricing`,
   };
 }
 

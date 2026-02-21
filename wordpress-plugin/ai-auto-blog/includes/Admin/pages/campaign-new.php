@@ -171,7 +171,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['_wpnonce']) && check_
     update_post_meta($saved_id, 'aab_remove_links', isset($_POST['aab_remove_links']) ? 1 : 0);
     update_post_meta($saved_id, 'aab_links_new_tab', isset($_POST['aab_links_new_tab']) ? 1 : 0);
     update_post_meta($saved_id, 'aab_links_nofollow', isset($_POST['aab_links_nofollow']) ? 1 : 0);
-
+    // ═══ SEO SETTINGS ═══
+    update_post_meta($saved_id, 'aab_seo_enabled',             isset($_POST['aab_seo_enabled']) ? 1 : 0);
+    update_post_meta($saved_id, 'aab_seo_title_template',       sanitize_text_field($_POST['aab_seo_title_template'] ?? '{title} | {site_name}'));
+    update_post_meta($saved_id, 'aab_seo_description_template', sanitize_textarea_field($_POST['aab_seo_description_template'] ?? ''));
+    update_post_meta($saved_id, 'aab_seo_focus_keyword',        sanitize_text_field($_POST['aab_seo_focus_keyword'] ?? ''));
+    update_post_meta($saved_id, 'aab_seo_schema_enabled',       isset($_POST['aab_seo_schema_enabled']) ? 1 : 0);
+    update_post_meta($saved_id, 'aab_seo_internal_links',       isset($_POST['aab_seo_internal_links']) ? 1 : 0);
+    update_post_meta($saved_id, 'aab_seo_internal_links_count', max(1, intval($_POST['aab_seo_internal_links_count'] ?? 3)));
+    update_post_meta($saved_id, 'aab_seo_social_meta',          isset($_POST['aab_seo_social_meta']) ? 1 : 0);
+    update_post_meta($saved_id, 'aab_seo_optimize_images',      isset($_POST['aab_seo_optimize_images']) ? 1 : 0);
+    // ════════════════════
     // Redirect to edit mode after save
     $redirect = admin_url('admin.php?page=aab-new-campaign' . ($saved_id ? '&edit=' . $saved_id : ''));
     wp_redirect($redirect);
