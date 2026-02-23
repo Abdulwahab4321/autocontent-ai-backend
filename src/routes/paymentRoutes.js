@@ -95,7 +95,157 @@ function getStripeLineItems(planId) {
 }
 
 /**
- * Create Stripe Checkout Session. successUrl and cancelUrl must be full URLs.
+ * Get Stripe Price ID for a plan from config (Product/Price IDs from Stripe Dashboard).
+ */
+function getPriceIdForPlan(planId) {
+  const normalized = planId && typeof planId === "string" ? planId.trim().toLowerCase() : null;
+  if (!normalized || !PLAN_LICENSES[normalized]) return null;
+  const priceIds = config.stripePriceIds || {};
+  return priceIds[normalized] || null;
+}
+
+/**
+ * Resolve Stripe Price (with amount) from config. Config can be Price ID (price_xxx) or Product ID (prod_xxx).
+ * If Product ID, fetches first active one-time price for that product.
+ */
+async function resolvePriceForPlan(stripe, planId) {
+  const raw = getPriceIdForPlan(planId);
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  if (trimmed.startsWith("price_")) {
+    const price = await stripe.prices.retrieve(trimmed);
+    return price && price.unit_amount ? price : null;
+  }
+  if (trimmed.startsWith("prod_")) {
+    const list = await stripe.prices.list({ product: trimmed, active: true });
+    const oneTime = list.data.find((p) => p.type === "one_time");
+    const price = oneTime || list.data[0];
+    return price && price.unit_amount ? price : null;
+  }
+  return null;
+}
+
+/**
+ * Get or create a Stripe Customer by email. Links payments to Stripe Dashboard → Customers.
+ * Uses idempotency key so concurrent create-payment-intent calls for same email create only one Customer.
+ */
+async function getOrCreateStripeCustomer(stripe, email) {
+  const trimmed = String(email || "").trim().toLowerCase();
+  if (!trimmed) return null;
+  const list = await stripe.customers.list({ email: trimmed, limit: 1 });
+  if (list.data.length > 0) return list.data[0].id;
+  const idempotencyKey = "customer_" + trimmed.replace(/[^a-z0-9@._-]/gi, "_");
+  try {
+    const customer = await stripe.customers.create(
+      { email: trimmed },
+      { idempotencyKey }
+    );
+    return customer.id;
+  } catch (err) {
+    if (err.statusCode === 409) {
+      const again = await stripe.customers.list({ email: trimmed, limit: 1 });
+      if (again.data.length > 0) return again.data[0].id;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Create Stripe PaymentIntent for embedded checkout.
+ * Uses Stripe Price ID (price_xxx) or Product ID (prod_xxx); if neither set, falls back to plan amounts.
+ * idempotencyKey: when provided, duplicate requests return the same PaymentIntent (avoids double PI on Strict Mode).
+ * userEmail: optional; when provided, creates/finds Stripe Customer and links to PaymentIntent (shows in Stripe Dashboard).
+ * Returns { clientSecret, amount, currency } for frontend.
+ */
+async function createPaymentIntentForPlan(userId, planId, idempotencyKey, userEmail) {
+  const Stripe = require("stripe");
+  const stripe = new Stripe(config.stripeSecretKey);
+  const normalized = planId && typeof planId === "string" ? planId.trim().toLowerCase() : null;
+  if (!normalized || !PLAN_LICENSES[normalized]) {
+    const err = new Error("Invalid plan. Use single, plus, or expert.");
+    err.code = "INVALID_PLAN";
+    throw err;
+  }
+
+  let amount;
+  let currency = "usd";
+
+  const priceIds = config.stripePriceIds || {};
+  const configValue = priceIds[normalized];
+
+  if (configValue && String(configValue).trim()) {
+    const price = await resolvePriceForPlan(stripe, planId);
+    if (price) {
+      amount = price.unit_amount;
+      currency = (price.currency || "usd").toLowerCase();
+    }
+  }
+
+  if (amount == null) {
+    amount = PLAN_AMOUNTS_CENTS[normalized] ?? 3900;
+  }
+
+  let stripeCustomerId = null;
+  if (userEmail && String(userEmail).trim()) {
+    stripeCustomerId = await getOrCreateStripeCustomer(stripe, userEmail);
+  }
+
+  const createParams = {
+    amount,
+    currency,
+    automatic_payment_methods: { enabled: true },
+    metadata: {
+      userId: String(userId),
+      planId: planId || "",
+      productId: PRODUCT_ID,
+    },
+  };
+  if (stripeCustomerId) {
+    createParams.customer = stripeCustomerId;
+  }
+
+  const createOptions = idempotencyKey && String(idempotencyKey).trim()
+    ? { idempotencyKey: String(idempotencyKey).trim() }
+    : {};
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.create(createParams, createOptions);
+    return {
+      clientSecret: paymentIntent.client_secret,
+      amount: paymentIntent.amount,
+      currency: paymentIntent.currency || "usd",
+    };
+  } catch (err) {
+    if (err.statusCode === 409) {
+      const existingId = err.raw?.id || (err.raw?.paymentIntent && err.raw.paymentIntent.id);
+      if (existingId) {
+        const existing = await stripe.paymentIntents.retrieve(existingId);
+        return {
+          clientSecret: existing.client_secret,
+          amount: existing.amount,
+          currency: existing.currency || "usd",
+        };
+      }
+    }
+    const idempotencyKeyReuseMsg =
+      err.message && String(err.message).toLowerCase().includes("idempotent");
+    if (
+      (err.statusCode === 400 || err.statusCode === 409) &&
+      idempotencyKeyReuseMsg
+    ) {
+      const retry = await stripe.paymentIntents.create(createParams);
+      return {
+        clientSecret: retry.client_secret,
+        amount: retry.amount,
+        currency: retry.currency || "usd",
+      };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Create Stripe Checkout Session (redirect flow). successUrl and cancelUrl must be full URLs.
  */
 async function createStripeCheckoutSession({ successUrl, cancelUrl, userId, userEmail, planId }) {
   const Stripe = require("stripe");
@@ -143,7 +293,38 @@ function getCheckoutUrls(body) {
   };
 }
 
-// --- Checkout (auth required). Stripe only; no mock. Frontend sends successUrl, cancelUrl, and optional planId (single|plus|expert). ---
+// --- Create PaymentIntent for embedded checkout (auth required). Uses Stripe Price IDs per plan. ---
+router.post("/create-payment-intent", auth, async (req, res) => {
+  try {
+    if (!config.stripeSecretKey) {
+      return res.status(503).json({
+        message: "Payment is not configured. Please set STRIPE_SECRET_KEY.",
+      });
+    }
+    const rawPlanId = req.body?.planId != null ? String(req.body.planId).trim().toLowerCase() : null;
+    const planId = rawPlanId && PLAN_LICENSES[rawPlanId] ? rawPlanId : null;
+    if (!planId) {
+      return res.status(400).json({ message: "Valid planId (single, plus, expert) is required." });
+    }
+    const userId = req.user.id;
+    const userEmail = req.user.email || null;
+    const idempotencyKey = req.body?.idempotencyKey != null ? String(req.body.idempotencyKey).trim() : null;
+    const result = await createPaymentIntentForPlan(userId, planId, idempotencyKey || undefined, userEmail);
+    return res.status(201).json({
+      success: true,
+      clientSecret: result.clientSecret,
+      amount: result.amount,
+      currency: result.currency,
+    });
+  } catch (err) {
+    if (err.code === "INVALID_PLAN") {
+      return res.status(400).json({ message: err.message });
+    }
+    return res.status(500).json({ message: err.message || "Failed to create payment intent" });
+  }
+});
+
+// --- Checkout (redirect to Stripe) – optional fallback. Frontend can use embedded flow instead. ---
 router.post("/checkout", auth, async (req, res) => {
   try {
     if (!config.stripeSecretKey) {
@@ -176,7 +357,8 @@ router.post("/checkout", auth, async (req, res) => {
 
 /**
  * Stripe webhook handler. Must be mounted with express.raw({ type: "application/json" }).
- * Idempotent: skips if a Purchase already exists for this session ID.
+ * Handles: payment_intent.succeeded (embedded checkout), checkout.session.completed (redirect).
+ * In Stripe Dashboard → Webhooks → Add event "payment_intent.succeeded" to your endpoint.
  */
 async function stripeWebhookHandler(req, res) {
   const sig = req.headers["stripe-signature"];
@@ -195,11 +377,56 @@ async function stripeWebhookHandler(req, res) {
     return res.status(400).send(`Webhook signature verification failed: ${err.message}`);
   }
 
-  if (event.type === "checkout.session.completed") {
+  if (event.type === "payment_intent.succeeded") {
+    const paymentIntent = event.data.object;
+    const paymentIntentId = paymentIntent.id;
     try {
-      const session = event.data.object;
-      const sessionId = session.id;
+      const existing = await Purchase.findOne({ stripePaymentIntentId: paymentIntentId });
+      if (existing) {
+        return res.status(200).send();
+      }
+      const userIdFromMeta = paymentIntent.metadata?.userId;
+      if (!userIdFromMeta) {
+        console.warn("[webhook] payment_intent.succeeded missing metadata.userId, pi:", paymentIntentId);
+        return res.status(200).send();
+      }
+      const user = await User.findById(userIdFromMeta);
+      if (!user) {
+        console.warn("[webhook] payment_intent.succeeded user not found, userId:", userIdFromMeta);
+        return res.status(200).send();
+      }
+      const amount = paymentIntent.amount_received ? paymentIntent.amount_received / 100 : DEFAULT_AMOUNT;
+      const planId = paymentIntent.metadata?.planId && PLAN_LICENSES[paymentIntent.metadata.planId]
+        ? paymentIntent.metadata.planId
+        : null;
+      const licenseCount = planId ? PLAN_LICENSES[planId] : 1;
+      const assigned = await assignLicensesFromPool(user._id, licenseCount);
+      await Purchase.create({
+        userId: user._id,
+        productId: PRODUCT_ID,
+        amount,
+        status: "completed",
+        description: `WordPress Plugin – ${planId || "One-time"} (${assigned.length} license(s))`,
+        invoiceUrl: null,
+        stripeSessionId: null,
+        stripePaymentIntentId: paymentIntentId,
+      });
+      if (assigned.length === 0) {
+        console.error("[webhook] No license available in pool for user", user._id.toString());
+      } else {
+        console.log("[webhook] payment_intent.succeeded processed, pi:", paymentIntentId, "userId:", user._id.toString());
+      }
+      return res.status(200).send();
+    } catch (err) {
+      console.error("[webhook] Error processing payment_intent.succeeded:", err.message);
+      return res.status(500).send();
+    }
+  }
 
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const sessionId = session.id;
+    try {
       const existing = await Purchase.findOne({ stripeSessionId: sessionId });
       if (existing) {
         return res.status(200).send();
@@ -216,6 +443,7 @@ async function stripeWebhookHandler(req, res) {
         user = await findOrCreateUserByEmail(email);
       }
       if (!user) {
+        console.warn("[webhook] checkout.session.completed no user, sessionId:", sessionId);
         return res.status(200).send();
       }
 
@@ -224,9 +452,8 @@ async function stripeWebhookHandler(req, res) {
         ? session.metadata.planId
         : null;
       const licenseCount = planId ? PLAN_LICENSES[planId] : 1;
-      const dbName = mongoose.connection?.db?.databaseName ?? "?";
       const unusedCount = await License.countDocuments({ status: "unused" });
-      console.log("[webhook] DB:", dbName, "| Unused:", unusedCount, "| need:", licenseCount, "| userId:", user._id.toString());
+      console.log("[webhook] checkout.session.completed sessionId:", sessionId, "userId:", user._id.toString(), "unused:", unusedCount, "need:", licenseCount);
       const assigned = await assignLicensesFromPool(user._id, licenseCount);
       await Purchase.create({
         userId: user._id,
@@ -238,10 +465,12 @@ async function stripeWebhookHandler(req, res) {
         stripeSessionId: sessionId,
       });
       if (assigned.length === 0) {
-        console.error("[webhook] No license available in pool for user", user._id);
+        console.error("[webhook] No license available in pool for user", user._id.toString());
       }
+      return res.status(200).send();
     } catch (err) {
       console.error("[webhook] Error processing checkout.session.completed:", err.message);
+      return res.status(500).send();
     }
   }
 

@@ -8,8 +8,10 @@ const purchaseSchema = new mongoose.Schema(
     status: { type: String, default: "completed" },
     description: { type: String, default: null },
     invoiceUrl: { type: String, default: null },
-    /** Stripe Checkout Session ID; used for webhook idempotency. Sparse unique index allows multiple nulls (mock checkouts). */
+    /** Stripe Checkout Session ID (redirect flow); used for webhook idempotency. */
     stripeSessionId: { type: String, default: null },
+    /** Stripe PaymentIntent ID (embedded flow); used for webhook idempotency. */
+    stripePaymentIntentId: { type: String, default: null },
   },
   { timestamps: true }
 );
